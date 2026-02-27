@@ -1,0 +1,30 @@
+# ===============================
+# Alumni-Student Portal .gitignore
+# ===============================
+
+# Ignore uploaded user files
+assets/images/uploads/*
+!assets/images/uploads/.gitkeep
+
+# Ignore database configuration (contains credentials)
+config/database.php
+
+# Ignore OS system files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Ignore IDE / Editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Ignore temporary & log files
+*.log
+*.tmp
+*.swp
+*~
+
+# Ignore vendor folder (if Composer is used later)
+vendor/
