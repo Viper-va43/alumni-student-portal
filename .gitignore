@@ -8,6 +8,7 @@ assets/images/uploads/*
 
 # Ignore database configuration (contains credentials)
 config/database.php
+config/maps.local.php
 
 # Ignore OS system files
 .DS_Store
