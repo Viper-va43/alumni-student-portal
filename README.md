@@ -1,4 +1,4 @@
-# Alumni-Student Connection Platform
+# Where2Go Website for finding new places to hang out
 
 ## 📋 Project Information
 - **Course:** Graduation Project 2 (GIS 402)
@@ -18,14 +18,14 @@ A website that helps people find new places to hang out and have fun.
 
 ## 💻 Technology Stack
 - **Backend:** PHP 8.x, MySQL
-- **Frontend:** HTML5, CSS3, JavaScript
+- **Frontend:** HTML5, CSS, JavaScript
 - **Server:** Apache (XAMPP)
 - **Version Control:** Git & GitHub
 
 ---
 
 ## 📁 Project Structure
-alumni-portal/
+Where2Go/
 ├── assets/
 ├── config/
 ├── includes/
@@ -60,10 +60,10 @@ alumni-portal/
 
 ### Setup Steps
 1. Clone repository into `C:\xampp\htdocs\`
-2. Create database `alumni_portal`
+2. Create database `Where2Go`
 3. Configure `config/database.php`
 4. Start Apache & MySQL in XAMPP
-5. Visit `http://localhost/alumni-portal`
+5. Visit `http://localhost/Where2Go/home.php`
 
 ---
 
