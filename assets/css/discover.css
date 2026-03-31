@@ -519,6 +519,155 @@ body.dark-mode .gallery-thumb {
     gap: 14px;
 }
 
+.availability-panel {
+    display: grid;
+    gap: 14px;
+}
+
+.availability-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.availability-legend {
+    display: grid;
+    grid-template-columns: repeat(3, max-content);
+    gap: 12px;
+}
+
+.availability-legend-chip,
+.availability-day,
+.slot-pill {
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    transition: transform 0.22s ease, border-color 0.22s ease, background 0.22s ease, color 0.22s ease;
+}
+
+.availability-legend-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    padding: 0 12px;
+    font-size: 0.84rem;
+    font-weight: 700;
+}
+
+.availability-legend-chip.is-available {
+    background: rgba(31, 138, 86, 0.12);
+    color: var(--success);
+}
+
+.availability-legend-chip.is-full {
+    background: rgba(184, 74, 57, 0.14);
+    color: #b84a39;
+}
+
+.availability-legend-chip.is-closed {
+    background: var(--panel-soft);
+    color: var(--muted);
+}
+
+.availability-grid-form {
+    display: grid;
+    gap: 12px;
+}
+
+.availability-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+    gap: 12px;
+}
+
+.availability-day {
+    min-height: 108px;
+    padding: 14px 10px;
+    background: var(--panel-soft);
+    color: var(--text);
+    display: grid;
+    justify-items: center;
+    gap: 4px;
+    cursor: pointer;
+}
+
+.availability-day span,
+.availability-day small,
+.availability-day em {
+    font-style: normal;
+    color: inherit;
+}
+
+.availability-day strong {
+    font-family: 'Sora', sans-serif;
+    font-size: 1.6rem;
+    line-height: 1;
+}
+
+.availability-day em {
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.availability-day.is-available {
+    background: rgba(31, 138, 86, 0.08);
+    color: var(--success);
+}
+
+.availability-day.is-available:hover {
+    transform: translateY(-1px);
+    border-color: rgba(31, 138, 86, 0.28);
+}
+
+.availability-day.is-full {
+    background: rgba(184, 74, 57, 0.14);
+    color: #b84a39;
+    cursor: not-allowed;
+}
+
+.availability-day.is-closed {
+    background: var(--panel-soft);
+    color: var(--muted);
+    cursor: not-allowed;
+    opacity: 0.76;
+}
+
+.availability-day.is-selected {
+    border-color: rgba(242, 108, 28, 0.48);
+    box-shadow: 0 16px 30px rgba(242, 108, 28, 0.16);
+}
+
+.slot-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 12px;
+}
+
+.slot-pill {
+    min-height: 48px;
+    padding: 10px 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: var(--panel-soft);
+    color: var(--text);
+    cursor: pointer;
+}
+
+.slot-pill.is-available:hover {
+    border-color: rgba(242, 108, 28, 0.34);
+    color: var(--accent);
+}
+
+.slot-pill.is-unavailable {
+    background: rgba(35, 22, 12, 0.06);
+    color: var(--muted);
+    cursor: not-allowed;
+}
+
 .review-card h3 {
     margin: 0 0 8px;
     font-size: 1rem;
@@ -573,5 +722,9 @@ body.dark-mode .gallery-thumb {
 
     .search-form {
         border-radius: 28px;
+    }
+
+    .availability-legend {
+        grid-template-columns: 1fr;
     }
 }

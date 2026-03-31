@@ -11,12 +11,9 @@
     const visitedCount = document.getElementById('visited-count');
     const profileMenus = Array.from(document.querySelectorAll('[data-profile-menu]'));
     const categoryCards = Array.from(document.querySelectorAll('[data-category-query]'));
-    const featuredPlaces = pageData.featuredPlaces || [];
     const savedLookup = new Set();
     const storedSavedKey = 'where2go-saved-places';
     const isLoggedIn = Boolean(pageData.isLoggedIn);
-    const mapsApiKey = pageData.mapsApiKey || '';
-    const featuredPayloads = {};
 
     function applyTheme(theme) {
         const isDark = theme === 'dark';
@@ -137,9 +134,7 @@
         }
     }
 
-    function updateSaveButton(placeId, isSaved) {
-        const button = document.querySelector('[data-track-place="' + placeId + '"]');
-
+    function updateSaveButton(button, isSaved) {
         if (!button) {
             return;
         }
@@ -154,7 +149,11 @@
         button.textContent = isSaved ? 'Remove from profile' : 'Save to profile';
     }
 
-    async function trackPlaceVisit(placeId, button) {
+    async function trackPlaceVisit(button) {
+        const placeId = button.dataset.trackPlace || '';
+        const source = button.dataset.trackSource || 'catalog';
+        const payload = button.dataset.trackPayload || '';
+
         if (!isLoggedIn) {
             window.location.href = 'login.php';
             return;
@@ -172,19 +171,19 @@
                 body: new URLSearchParams({
                     action: isSaved ? 'remove' : 'save',
                     place_id: placeId,
-                    source: 'catalog',
-                    payload: JSON.stringify(featuredPayloads[placeId] || {}),
+                    source: source,
+                    payload: payload,
                 }).toString(),
             });
 
-            const payload = await response.json();
+            const payloadData = await response.json();
 
-            if (!response.ok || !payload.ok) {
-                throw new Error(payload.message || 'The place could not be updated.');
+            if (!response.ok || !payloadData.ok) {
+                throw new Error(payloadData.message || 'The place could not be updated.');
             }
 
-            syncSavedLookup(payload.visited || []);
-            updateSaveButton(placeId, !isSaved);
+            syncSavedLookup(payloadData.visited || []);
+            updateSaveButton(button, !isSaved);
             updateVisitedCount();
         } catch (error) {
             window.alert(error.message || 'The place could not be updated right now.');
@@ -194,134 +193,8 @@
     }
 
     function goToSearch(query) {
-        const term = (query || '').trim();
-        const normalized = term === '' ? 'nightlife' : term;
-        window.location.href = 'search.php?q=' + encodeURIComponent(normalized);
-    }
-
-    function setBackgroundMedia(element, photoUrl) {
-        if (!element || !photoUrl) {
-            return;
-        }
-
-        element.classList.add('has-photo');
-        element.style.backgroundImage = 'url("' + photoUrl.replace(/"/g, '\\"') + '")';
-        element.innerHTML = '';
-    }
-
-    function setAttribution(target, html) {
-        if (target) {
-            target.innerHTML = html || '';
-        }
-    }
-
-    function updateFeaturedCard(placeId, updates) {
-        const photoElement = document.querySelector('[data-card-photo="' + placeId + '"]');
-        const ratingElement = document.querySelector('[data-card-rating="' + placeId + '"]');
-        const addressElement = document.querySelector('[data-card-address="' + placeId + '"]');
-        const descriptionElement = document.querySelector('[data-card-description="' + placeId + '"]');
-        const attributionElement = document.querySelector('[data-card-attribution="' + placeId + '"]');
-
-        if (updates.photoUrl) {
-            setBackgroundMedia(photoElement, updates.photoUrl);
-        }
-
-        if (ratingElement && updates.ratingText) {
-            ratingElement.innerHTML = '<i data-lucide="star" class="tiny-icon"></i>' + updates.ratingText;
-        }
-
-        if (addressElement && updates.address) {
-            addressElement.innerHTML = '<i data-lucide="map-pin" class="tiny-icon"></i>' + updates.address;
-        }
-
-        if (descriptionElement && updates.description) {
-            descriptionElement.textContent = updates.description;
-        }
-
-        setAttribution(attributionElement, updates.attribution || '');
-        lucide.createIcons();
-    }
-
-    function loadGoogleMapsApi(apiKey) {
-        if (window.google && window.google.maps) {
-            return Promise.resolve();
-        }
-
-        return new Promise((resolve, reject) => {
-            const existingScript = document.querySelector('[data-google-maps-loader]');
-
-            if (existingScript) {
-                existingScript.addEventListener('load', resolve, { once: true });
-                existingScript.addEventListener('error', reject, { once: true });
-                return;
-            }
-
-            const script = document.createElement('script');
-            script.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(apiKey) + '&libraries=places&v=weekly';
-            script.async = true;
-            script.defer = true;
-            script.setAttribute('data-google-maps-loader', 'true');
-            script.addEventListener('load', resolve, { once: true });
-            script.addEventListener('error', reject, { once: true });
-            document.head.appendChild(script);
-        });
-    }
-
-    function formatPriceLevel(level, fallbackValue) {
-        if (typeof level === 'number' && level > 0) {
-            return '$'.repeat(level);
-        }
-
-        return fallbackValue || '$$';
-    }
-
-    function refreshFeaturedPlacesWithGoogle(service) {
-        featuredPlaces.forEach((place) => {
-            service.findPlaceFromQuery(
-                {
-                    query: place.query,
-                    fields: ['name', 'formatted_address', 'photos', 'price_level', 'rating', 'place_id'],
-                },
-                (results, status) => {
-                    if (status !== window.google.maps.places.PlacesServiceStatus.OK || !results || !results[0]) {
-                        return;
-                    }
-
-                    const result = results[0];
-                    const photo = result.photos && result.photos[0] ? result.photos[0] : null;
-                    const updates = {
-                        address: result.formatted_address || (place.area + ', ' + place.city),
-                        description: place.description,
-                        ratingText: result.rating ? result.rating.toFixed(1) + ' rating' : 'Live rating',
-                        photoUrl: photo && typeof photo.getUrl === 'function' ? photo.getUrl({ maxWidth: 680, maxHeight: 420 }) : '',
-                        attribution: photo && Array.isArray(photo.html_attributions) ? photo.html_attributions.join(' ') : '',
-                    };
-
-                    updateFeaturedCard(place.id, updates);
-                    featuredPayloads[place.id] = {
-                        photo_url: updates.photoUrl,
-                        photo_attribution: updates.attribution,
-                        rating: result.rating ? result.rating.toFixed(1) : place.rating,
-                        price_range: formatPriceLevel(result.price_level, place.price_range),
-                        google_maps_url: result.place_id ? ('place.php?place_id=' + encodeURIComponent(result.place_id)) : '',
-                    };
-                }
-            );
-        });
-    }
-
-    async function initHomepageGoogle() {
-        if (!mapsApiKey) {
-            return;
-        }
-
-        try {
-            await loadGoogleMapsApi(mapsApiKey);
-            const service = new window.google.maps.places.PlacesService(document.createElement('div'));
-            refreshFeaturedPlacesWithGoogle(service);
-        } catch (error) {
-            // The homepage still works without Google refresh data.
-        }
+        const normalized = (query || '').trim();
+        window.location.href = normalized === '' ? 'search.php' : 'search.php?q=' + encodeURIComponent(normalized);
     }
 
     if (themeToggle) {
@@ -334,14 +207,14 @@
 
     saveButtons.forEach((button) => {
         button.addEventListener('click', () => {
-            trackPlaceVisit(button.dataset.trackPlace, button);
+            trackPlaceVisit(button);
         });
     });
 
     window.addEventListener('pageshow', () => {
         hydrateSavedLookup();
         saveButtons.forEach((button) => {
-            updateSaveButton(button.dataset.trackPlace, savedLookup.has(button.dataset.trackPlace));
+            updateSaveButton(button, savedLookup.has(button.dataset.trackPlace));
         });
         updateVisitedCount();
     });
@@ -369,12 +242,11 @@
 
     hydrateSavedLookup();
     saveButtons.forEach((button) => {
-        updateSaveButton(button.dataset.trackPlace, savedLookup.has(button.dataset.trackPlace));
+        updateSaveButton(button, savedLookup.has(button.dataset.trackPlace));
     });
     applyTheme(localStorage.getItem('where2go-theme') || 'light');
     showIntro();
     setupProfileMenus();
     updateVisitedCount();
     lucide.createIcons();
-    initHomepageGoogle();
 })();

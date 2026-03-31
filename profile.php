@@ -10,7 +10,7 @@ $customer = get_customer_by_id($customerId) ?: [];
 $customerName = trim($customer['First_N'] ?? ($_SESSION['customer_name'] ?? 'Traveler'));
 $profilePhoto = get_profile_photo_web_path($customerId);
 $visitedPlaceIds = get_visited_place_ids();
-$visitedPlaces = get_visited_places();
+$visitedPlaces = get_visited_places(12);
 $memberSince = '';
 $messages = [];
 
@@ -118,13 +118,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['profile_photo'])) {
         <h1><?php echo htmlspecialchars($customerName, ENT_QUOTES, 'UTF-8'); ?>'s Where2Go space</h1>
         <p>This is the account home for saved places, quick suggestions, and your profile picture. The homepage save buttons now feed this page so your next outing history feels connected.</p>
         <div class="profile-stats">
-            <span class="status-badge is-success"><i data-lucide="bookmark-check"></i><?php echo count($visitedPlaces); ?> saved places</span>
+            <span class="status-badge is-success"><i data-lucide="bookmark-check"></i><?php echo count($visitedPlaceIds); ?> saved places</span>
             <span class="status-badge"><i data-lucide="calendar-days"></i><?php echo $memberSince !== '' ? 'Member since ' . htmlspecialchars($memberSince, ENT_QUOTES, 'UTF-8') : 'Where2Go member'; ?></span>
             <span class="status-badge"><i data-lucide="mail"></i><?php echo htmlspecialchars($customer['Email'] ?? ($_SESSION['customer_email'] ?? 'No email'), ENT_QUOTES, 'UTF-8'); ?></span>
         </div>
         <div class="hero-actions">
             <a class="primary-btn" href="suggestions.php"><i data-lucide="sparkles"></i>Open suggestions</a>
-            <a class="secondary-btn" href="search.php?q=nightlife"><i data-lucide="search"></i>Search live places</a>
+            <a class="secondary-btn" href="search.php"><i data-lucide="search"></i>Search local places</a>
         </div>
     </section>
 
@@ -178,8 +178,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['profile_photo'])) {
         <section class="panel-card">
             <div class="section-row">
                 <div>
-                    <h2 style="margin-bottom:8px;">Places you saved</h2>
-                    <p class="section-copy">This slider is connected to the homepage save buttons, so the places you mark there appear here for quick revisits.</p>
+                    <h2 style="margin-bottom:8px;">Recently saved places</h2>
+                    <p class="section-copy">This slider shows your latest saved spots from the homepage and search flow, so your newest ideas stay easy to revisit.</p>
                 </div>
                 <?php if (count($visitedPlaces) > 1): ?>
                 <div class="card-actions">
@@ -194,9 +194,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['profile_photo'])) {
                 <div class="slider-track" id="visited-slider">
                     <?php foreach ($visitedPlaces as $place): ?>
                     <?php
-                    $detailHref = ($place['source'] ?? 'catalog') === 'google'
+                    $placeSource = $place['source'] ?? 'catalog';
+                    $detailHref = $placeSource === 'google'
                         ? 'place.php?place_id=' . rawurlencode($place['place_id'] ?? $place['id'])
-                        : 'place.php?catalog_id=' . rawurlencode($place['id']);
+                        : ($placeSource === 'business'
+                            ? ($place['detail_url'] ?? ('place.php?business_id=' . rawurlencode((string) ($place['business_id'] ?? ''))))
+                            : 'place.php?catalog_id=' . rawurlencode($place['id']));
                     ?>
                     <article class="place-card">
                         <div class="place-media"<?php if (!empty($place['photo_url'])): ?> style="background-image:url('<?php echo htmlspecialchars($place['photo_url'], ENT_QUOTES, 'UTF-8'); ?>');background-size:cover;background-position:center;"<?php endif; ?>>

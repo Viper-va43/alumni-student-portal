@@ -2,6 +2,5 @@
 require_once __DIR__ . '/includes/functions.php';
 
 logout_partner_user();
-logout_user();
-header('Location: Home.php');
+header('Location: partner-login.php?logged_out=1');
 exit;

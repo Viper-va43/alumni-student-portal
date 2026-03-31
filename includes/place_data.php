@@ -180,15 +180,158 @@ function get_places_by_ids($placeIds) {
 }
 
 function get_suggested_places($visitedIds = [], $limit = 4) {
-    $catalog = get_place_catalog();
     $visitedLookup = array_flip($visitedIds);
     $suggestions = [];
 
-    foreach ($catalog as $place) {
+    foreach (get_discovery_places() as $place) {
         if (!isset($visitedLookup[$place['id']])) {
             $suggestions[] = $place;
         }
     }
 
     return array_slice($suggestions, 0, $limit);
+}
+
+function normalize_catalog_place_for_discovery($place) {
+    $place = is_array($place) ? $place : [];
+    $address = trim(implode(', ', array_filter([
+        trim((string) ($place['area'] ?? '')),
+        trim((string) ($place['city'] ?? '')),
+    ])));
+
+    return [
+        'id' => (string) ($place['id'] ?? ''),
+        'source' => 'catalog',
+        'place_id' => (string) ($place['id'] ?? ''),
+        'business_id' => null,
+        'location_id' => null,
+        'name' => trim((string) ($place['name'] ?? 'Where2Go place')),
+        'category' => trim((string) ($place['category'] ?? 'Featured place')),
+        'area' => trim((string) ($place['area'] ?? '')),
+        'city' => trim((string) ($place['city'] ?? '')),
+        'address' => $address,
+        'description' => trim((string) ($place['description'] ?? 'Curated by Where2Go.')),
+        'price_range' => trim((string) ($place['price_range'] ?? '$$')),
+        'rating' => trim((string) ($place['rating'] ?? 'Featured')),
+        'reviews' => (int) ($place['reviews'] ?? 0),
+        'icon' => trim((string) ($place['icon'] ?? 'map-pinned')),
+        'photo_url' => trim((string) ($place['photo_url'] ?? '')),
+        'photo_attribution' => trim((string) ($place['photo_attribution'] ?? '')),
+        'website_url' => trim((string) ($place['website_url'] ?? '')),
+        'offer_title' => '',
+        'has_offer' => false,
+        'detail_url' => 'place.php?catalog_id=' . rawurlencode((string) ($place['id'] ?? '')),
+        'search_blob' => strtolower(trim(implode(' ', array_filter([
+            $place['name'] ?? '',
+            $place['category'] ?? '',
+            $place['area'] ?? '',
+            $place['city'] ?? '',
+            $place['description'] ?? '',
+        ])))),
+    ];
+}
+
+function normalize_public_business_for_discovery($business) {
+    $business = is_array($business) ? $business : [];
+    $businessId = (int) ($business['business_id'] ?? 0);
+    $address = trim((string) ($business['primary_address'] ?? ''));
+    $offerTitle = trim((string) ($business['active_offer_title'] ?? ''));
+    $descriptionParts = [];
+
+    if ($offerTitle !== '') {
+        $descriptionParts[] = 'Offer live: ' . $offerTitle . '.';
+    }
+
+    if (trim((string) ($business['description'] ?? '')) !== '') {
+        $descriptionParts[] = trim((string) $business['description']);
+    }
+
+    $ratingValue = $business['average_rating'] !== null
+        ? number_format((float) $business['average_rating'], 1)
+        : 'New';
+
+    return [
+        'id' => $businessId > 0 ? (string) $businessId : '',
+        'source' => 'business',
+        'place_id' => $businessId > 0 ? (string) $businessId : '',
+        'business_id' => $businessId > 0 ? $businessId : null,
+        'location_id' => !empty($business['primary_location_id']) ? (int) $business['primary_location_id'] : null,
+        'name' => trim((string) ($business['name'] ?? 'Where2Go business')),
+        'category' => trim((string) ($business['type_label'] ?? 'Business')),
+        'area' => $address,
+        'city' => '',
+        'address' => $address,
+        'description' => trim(implode(' ', $descriptionParts)) !== '' ? trim(implode(' ', $descriptionParts)) : 'Approved business on Where2Go.',
+        'price_range' => $offerTitle !== '' ? 'Offer live' : 'See details',
+        'rating' => $ratingValue,
+        'reviews' => (int) ($business['review_count'] ?? 0),
+        'icon' => trim((string) ($business['icon'] ?? 'building-2')),
+        'photo_url' => trim((string) ($business['photo_url'] ?? '')),
+        'photo_attribution' => '',
+        'website_url' => trim((string) ($business['website'] ?? '')),
+        'offer_title' => $offerTitle,
+        'has_offer' => $offerTitle !== '',
+        'detail_url' => $businessId > 0 ? 'place.php?business_id=' . rawurlencode((string) $businessId) : '',
+        'search_blob' => strtolower(trim(implode(' ', array_filter([
+            $business['name'] ?? '',
+            $business['type_label'] ?? '',
+            $business['primary_address'] ?? '',
+            $business['description'] ?? '',
+            $offerTitle,
+        ])))),
+    ];
+}
+
+function get_discovery_places($query = '', $limit = null) {
+    $places = [];
+
+    foreach (get_place_catalog() as $place) {
+        $normalized = normalize_catalog_place_for_discovery($place);
+
+        if ($normalized['id'] !== '') {
+            $places[] = $normalized;
+        }
+    }
+
+    if (function_exists('get_public_businesses')) {
+        foreach (get_public_businesses() as $business) {
+            $normalized = normalize_public_business_for_discovery($business);
+
+            if ($normalized['id'] !== '') {
+                $places[] = $normalized;
+            }
+        }
+    }
+
+    $query = strtolower(trim((string) $query));
+
+    if ($query !== '') {
+        $places = array_values(array_filter($places, function ($place) use ($query) {
+            return strpos((string) ($place['search_blob'] ?? ''), $query) !== false;
+        }));
+    }
+
+    usort($places, function ($left, $right) {
+        $leftHasOffer = !empty($left['has_offer']) ? 1 : 0;
+        $rightHasOffer = !empty($right['has_offer']) ? 1 : 0;
+
+        if ($leftHasOffer !== $rightHasOffer) {
+            return $rightHasOffer <=> $leftHasOffer;
+        }
+
+        $leftSource = (string) ($left['source'] ?? '');
+        $rightSource = (string) ($right['source'] ?? '');
+
+        if ($leftSource !== $rightSource) {
+            return $leftSource === 'business' ? 1 : -1;
+        }
+
+        return strcasecmp((string) ($left['name'] ?? ''), (string) ($right['name'] ?? ''));
+    });
+
+    if ($limit !== null && (int) $limit > 0) {
+        return array_slice($places, 0, (int) $limit);
+    }
+
+    return $places;
 }

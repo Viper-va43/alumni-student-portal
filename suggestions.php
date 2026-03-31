@@ -73,7 +73,7 @@ $suggestedPlaces = get_suggested_places($visitedPlaceIds, 6);
         </div>
         <div class="hero-actions">
             <a class="primary-btn" href="profile.php"><i data-lucide="user-round"></i>Back to profile</a>
-            <a class="secondary-btn" href="search.php?q=nightlife"><i data-lucide="search"></i>Search live places</a>
+            <a class="secondary-btn" href="search.php"><i data-lucide="search"></i>Search local places</a>
         </div>
     </section>
 
@@ -110,12 +110,12 @@ $suggestedPlaces = get_suggested_places($visitedPlaceIds, 6);
             <?php endforeach; ?>
         </div>
         <?php else: ?>
-        <div class="empty-card">
-            <h3 style="margin-top:0;">You already covered every featured spot</h3>
-            <p>The current suggestion list is empty because your profile already contains all of the featured places. You can keep exploring the homepage map as you add more real places later.</p>
-            <div class="card-actions">
-                <a class="primary-btn" href="Home.php#places"><i data-lucide="compass"></i>Browse homepage places</a>
-            </div>
+            <div class="empty-card">
+                <h3 style="margin-top:0;">You already covered every featured spot</h3>
+                <p>The current suggestion list is empty because your profile already contains all of the places available right now. More approved partner businesses will show up here as the catalog grows.</p>
+                <div class="card-actions">
+                    <a class="primary-btn" href="Home.php#places"><i data-lucide="compass"></i>Browse homepage places</a>
+                </div>
         </div>
         <?php endif; ?>
     </section>
