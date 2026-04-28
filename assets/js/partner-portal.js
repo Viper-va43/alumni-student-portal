@@ -6,6 +6,8 @@
     const locationTemplate = document.getElementById('location-template');
     const offerTemplate = document.getElementById('offer-template');
 
+    // Show the custom business-type field only when the partner selects Other.
+
     function updateCustomTypeVisibility() {
         if (!customTypeWrap || typeInputs.length === 0) {
             return;
@@ -26,6 +28,8 @@
         }
     }
 
+    // Disable the time inputs for a day when that location is marked as closed.
+
     function updateHoursRow(row) {
         const closedInput = row.querySelector('[data-hours-closed]');
         const timeInputs = Array.from(row.querySelectorAll('[data-hours-time]'));
@@ -44,10 +48,14 @@
         });
     }
 
+    // Apply the closed or open state rules to every hours row in the given scope.
+
     function hydrateHoursRows(scope) {
         const rows = Array.from(scope.querySelectorAll('[data-hours-row]'));
         rows.forEach((row) => updateHoursRow(row));
     }
+
+    // Find the next numeric index for dynamically added location or offer cards.
 
     function nextDynamicIndex(container) {
         let maxIndex = -1;
@@ -62,6 +70,8 @@
         return maxIndex + 1;
     }
 
+    // Clone a hidden HTML template and replace the placeholder index values.
+
     function createNodeFromTemplate(template, index) {
         if (!template) {
             return null;
@@ -73,6 +83,8 @@
 
         return wrapper.firstElementChild;
     }
+
+    // Hide remove buttons when only one location or offer card remains.
 
     function updateRemoveButtons() {
         const locationCards = locationList ? Array.from(locationList.querySelectorAll('[data-location-card]')) : [];
@@ -94,6 +106,8 @@
             }
         });
     }
+
+    // Copy one opening and closing schedule across all days in a location card.
 
     function applyHoursToLocation(card) {
         const openInput = card.querySelector('[data-apply-open]');
@@ -123,6 +137,43 @@
             }
 
             updateHoursRow(row);
+        });
+    }
+
+    // Render each partner location QR code when the dashboard exposes a QR container.
+
+    function renderLocationQrs() {
+        if (!window.QRCode) {
+            return;
+        }
+
+        const qrNodes = Array.from(document.querySelectorAll('[data-location-qr]'));
+
+        qrNodes.forEach((node) => {
+            const qrUrl = node.getAttribute('data-qr-url') || '';
+
+            if (!qrUrl || node.getAttribute('data-qr-ready') === '1') {
+                return;
+            }
+
+            node.innerHTML = '';
+
+            QRCode.toCanvas(qrUrl, {
+                width: 172,
+                margin: 1,
+                color: {
+                    dark: '#23160c',
+                    light: '#0000',
+                },
+            }, (error, canvas) => {
+                if (error || !canvas) {
+                    node.textContent = 'QR preview unavailable';
+                    return;
+                }
+
+                node.appendChild(canvas);
+                node.setAttribute('data-qr-ready', '1');
+            });
         });
     }
 
@@ -222,4 +273,5 @@
     updateCustomTypeVisibility();
     updateRemoveButtons();
     lucide.createIcons();
+    renderLocationQrs();
 })();

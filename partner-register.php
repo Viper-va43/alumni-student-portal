@@ -1,4 +1,5 @@
 <?php
+// Create dedicated partner accounts that are separate from normal customer logins.
 require_once __DIR__ . '/includes/functions.php';
 
 start_session();
@@ -14,6 +15,7 @@ $email = trim($_POST['email'] ?? '');
 $password = $_POST['password'] ?? '';
 $confirmPassword = $_POST['confirm_password'] ?? '';
 
+// Validate the submitted owner details before creating the partner account.
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     if ($ownerName === '' || $email === '' || $password === '' || $confirmPassword === '') {
         $errors[] = 'Name, email, password, and confirmation are required.';
@@ -70,6 +72,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 <link rel="stylesheet" href="assets/css/partner-portal.css">
 </head>
 <body class="light-mode">
+<!-- Partner registration header with shortcuts back to the customer-facing pages. -->
 <header class="topbar">
     <div class="topbar-inner">
         <div class="topbar-left">
@@ -92,12 +95,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 </header>
 
 <main class="main-inner">
+    <!-- Hero panel that explains the partner onboarding flow. -->
     <section class="hero-panel">
         <span class="eyebrow"><i data-lucide="store"></i>Partner portal</span>
         <h1>Create your business-owner account</h1>
         <p>Register as a partner to submit your business, track views and reservations, and send your listing into the pending approval queue before it appears on Where2Go.</p>
     </section>
 
+    <!-- Registration layout pairing onboarding guidance with the account form. -->
     <section class="auth-shell" style="margin-top:24px;">
         <div class="panel-card">
             <h2>What happens next</h2>
@@ -164,6 +169,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 </main>
 
 <script>
+// Keep the shared account script initialized even though this page does not expose saved places.
 window.where2goPageData = <?php echo json_encode(['visitedPlaceIds' => []], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
 </script>
 <script src="assets/js/account.js"></script>

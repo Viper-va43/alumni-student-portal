@@ -1,17 +1,21 @@
 <?php
+// Load the save/remove helpers used by the AJAX endpoint.
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/place_data.php';
 
 start_session();
 
+// Always answer with JSON because this file is called from fetch requests.
 header('Content-Type: application/json');
 
+// Block anonymous users before any saved-place action is processed.
 if (!is_logged_in()) {
     http_response_code(401);
     echo json_encode(['ok' => false, 'message' => 'Login required.']);
     exit;
 }
 
+// Read the place details sent by the front-end save buttons.
 $placeId = trim($_POST['place_id'] ?? '');
 $businessId = (int) ($_POST['business_id'] ?? 0);
 $locationId = (int) ($_POST['location_id'] ?? 0);
@@ -20,6 +24,7 @@ $source = trim($_POST['source'] ?? 'catalog');
 $payloadJson = $_POST['payload'] ?? '';
 $payload = [];
 
+// Decode any optional metadata that helps identify partner businesses and locations.
 if ($payloadJson !== '') {
     $decoded = json_decode($payloadJson, true);
 
@@ -35,24 +40,28 @@ if ($payloadJson !== '') {
     }
 }
 
+// Normalize the request into a consistent target record for catalog places or businesses.
 $target = resolve_saved_place_target($placeId, array_merge($payload, [
     'business_id' => $businessId,
     'location_id' => $locationId,
 ]));
 $isDatabaseTarget = $target['business_id'] > 0 || $target['location_id'] > 0 || in_array($source, ['business', 'business_location', 'location'], true);
 
+// Reject requests that still do not identify any known place after normalization.
 if ($placeId === '' && !$isDatabaseTarget) {
     http_response_code(422);
     echo json_encode(['ok' => false, 'message' => 'Unknown place.']);
     exit;
 }
 
+// Only allow the two supported actions from the save button workflow.
 if ($action !== 'save' && $action !== 'remove') {
     http_response_code(422);
     echo json_encode(['ok' => false, 'message' => 'Unknown action.']);
     exit;
 }
 
+// Remove an existing saved place and return the refreshed saved list.
 if ($action === 'remove') {
     remove_place_visit($placeId, [
         'business_id' => $target['business_id'],
@@ -67,6 +76,7 @@ if ($action === 'remove') {
     exit;
 }
 
+// Validate partner business targets against the database before saving them.
 if ($isDatabaseTarget) {
     $businessId = (int) $target['business_id'];
     $locationId = (int) $target['location_id'];
@@ -92,6 +102,7 @@ if ($isDatabaseTarget) {
     exit;
 }
 
+// Google-sourced places must include enough metadata to be rebuilt later.
 if ($source === 'google') {
     $hasName = trim((string) ($payload['name'] ?? '')) !== '';
     $hasAddress = trim((string) ($payload['address'] ?? $payload['formatted_address'] ?? '')) !== '';
@@ -103,6 +114,7 @@ if ($source === 'google') {
     }
 }
 
+// Any non-catalog source at this point must still resolve to a database-backed business target.
 if ($source !== 'catalog' && $source !== 'google') {
     if (!$isDatabaseTarget) {
         http_response_code(422);
@@ -111,6 +123,7 @@ if ($source !== 'catalog' && $source !== 'google') {
     }
 }
 
+// Persist the save action and return the updated ids so the UI can stay in sync.
 record_place_visit($placeId, $source, $payload);
 
 echo json_encode([

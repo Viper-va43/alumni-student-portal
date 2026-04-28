@@ -1,4 +1,5 @@
-﻿<?php
+<?php
+// Load the database-backed landing page data and the session state used by the header.
 require_once __DIR__ . '/config/database.php';
 
 require_once __DIR__ . '/includes/functions.php';
@@ -59,6 +60,7 @@ if (!$conn) {
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest"></script>
 <style>
+/* Default light theme tokens for the legacy landing page. */
 :root {
     color-scheme: light;
     --page-bg: radial-gradient(circle at top, rgba(242, 108, 28, 0.16), transparent 38%), linear-gradient(180deg, #fffaf5 0%, #ffffff 28%, #fff5ed 100%);
@@ -89,6 +91,7 @@ if (!$conn) {
     --intro-bg: radial-gradient(circle at center, rgba(242, 108, 28, 0.2), transparent 32%), #0a0705;
 }
 
+/* Dark theme overrides that activate when the visitor switches modes. */
 body.dark-mode {
     color-scheme: dark;
     --page-bg: radial-gradient(circle at top, rgba(242, 108, 28, 0.22), transparent 32%), linear-gradient(180deg, #100b08 0%, #17100c 34%, #090705 100%);
@@ -214,6 +217,7 @@ img {
     text-align: center;
 }
 
+/* Sticky header styles for the landing page navigation and theme toggle. */
 .topbar {
     position: sticky;
     top: 0;
@@ -319,6 +323,7 @@ body.light-mode .logo {
     background: var(--surface-soft);
 }
 
+/* Hero layout styles for the intro, search form, and supporting stats. */
 .hero {
     padding: 72px 0 38px;
 }
@@ -759,7 +764,8 @@ body.light-mode .logo {
 }
 
 @media (max-width: 640px) {
-    .hero {
+    /* Hero layout styles for the intro, search form, and supporting stats. */
+.hero {
         padding-top: 36px;
     }
 
@@ -795,6 +801,7 @@ body.light-mode .logo {
 </style>
 </head>
 <body class="light-mode">
+<!-- Intro overlay shown once per session before the landing page becomes interactive. -->
 <div class="intro-screen" id="intro-screen" aria-hidden="true">
     <div class="intro-card">
         <div class="intro-logo-shell">
@@ -805,6 +812,7 @@ body.light-mode .logo {
 </div>
 
 <div class="site-shell">
+    <!-- Header with navigation, session-aware account links, and the theme toggle. -->
     <header class="topbar">
         <div class="topbar-inner">
             <div class="brand-wrap">
@@ -835,6 +843,7 @@ body.light-mode .logo {
     </header>
 
     <main>
+        <!-- Hero area introducing the product, search form, and status notices. -->
         <section class="hero" id="home">
             <div class="section-inner">
                 <div class="hero-card">
@@ -924,6 +933,7 @@ body.light-mode .logo {
             </div>
         </section>
 
+        <!-- Category cards that explain how discovery will be organized. -->
         <section class="section" id="categories">
             <div class="section-inner">
                 <div class="section-header">
@@ -961,6 +971,7 @@ body.light-mode .logo {
             </div>
         </section>
 
+        <!-- Live partner-place listing area with empty and database-error fallbacks. -->
         <section class="section" id="places">
             <div class="section-inner">
                 <div class="section-header">
@@ -1010,6 +1021,7 @@ body.light-mode .logo {
             </div>
         </section>
 
+        <!-- Supporting detail cards that explain the current technical project status. -->
         <section class="section">
             <div class="section-inner">
                 <div class="detail-grid">
@@ -1035,6 +1047,7 @@ body.light-mode .logo {
         </section>
     </main>
 
+    <!-- Footer with quick links and local setup notes for the prototype. -->
     <footer class="footer" id="contact">
         <div class="footer-inner">
             <div class="footer-card">
@@ -1070,6 +1083,7 @@ body.light-mode .logo {
 </div>
 
 <script>
+// Theme and intro controls for the legacy landing page.
 const themeKey = 'where2go-theme';
 const body = document.body;
 const themeToggle = document.getElementById('theme-toggle');
@@ -1077,6 +1091,7 @@ const themeIcon = document.getElementById('theme-icon');
 const themeLabel = document.getElementById('theme-label');
 const introScreen = document.getElementById('intro-screen');
 
+// Apply the saved light or dark mode and refresh the page icons.
 function applyTheme(theme) {
     const isDark = theme === 'dark';
     body.classList.toggle('dark-mode', isDark);
@@ -1087,6 +1102,7 @@ function applyTheme(theme) {
     lucide.createIcons();
 }
 
+// Animate the intro overlay once per browser session before removing it.
 function startIntro() {
     const seenIntro = sessionStorage.getItem('where2go-intro-seen') === '1';
 

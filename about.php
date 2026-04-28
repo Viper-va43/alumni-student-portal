@@ -1,4 +1,5 @@
 <?php
+// Load the session so the about page can adapt its header actions for logged-in visitors.
 require_once __DIR__ . '/includes/functions.php';
 
 start_session();
@@ -17,6 +18,7 @@ $customerName = trim($_SESSION['customer_name'] ?? '');
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest"></script>
 <style>
+/* Default light theme tokens for the standalone about page. */
 :root {
     color-scheme: light;
     --page-bg: radial-gradient(circle at top, rgba(242, 108, 28, 0.16), transparent 38%), linear-gradient(180deg, #fffaf5 0%, #ffffff 28%, #fff5ed 100%);
@@ -36,6 +38,7 @@ $customerName = trim($_SESSION['customer_name'] ?? '');
     --accent-strong: #c85108;
 }
 
+/* Dark theme overrides that activate when the visitor switches modes. */
 body.dark-mode {
     color-scheme: dark;
     --page-bg: radial-gradient(circle at top, rgba(242, 108, 28, 0.22), transparent 32%), linear-gradient(180deg, #100b08 0%, #17100c 34%, #090705 100%);
@@ -85,6 +88,7 @@ img {
     min-height: 100vh;
 }
 
+/* Sticky header styles for the page title, navigation links, and theme toggle. */
 .topbar {
     position: sticky;
     top: 0;
@@ -193,6 +197,7 @@ body.light-mode .logo {
     padding: 50px 0 72px;
 }
 
+/* Hero panel styles for the page introduction and quick callout content. */
 .hero-panel {
     overflow: hidden;
     border-radius: 32px;
@@ -485,6 +490,7 @@ body.dark-mode .footer-card {
 </head>
 <body class="light-mode">
 <div class="page-shell">
+    <!-- Page header with navigation back into the main discovery experience. -->
     <header class="topbar">
         <div class="topbar-inner">
             <div class="brand-wrap">
@@ -512,6 +518,7 @@ body.dark-mode .footer-card {
     </header>
 
     <main class="main-inner">
+        <!-- Intro section that explains the purpose and promise of Where2Go. -->
         <section class="hero-panel">
             <div class="hero-grid">
                 <div>
@@ -538,6 +545,7 @@ body.dark-mode .footer-card {
         </section>
 
         <div class="sections-grid">
+            <!-- Main content grid covering the mission, vision, story, and contact details. -->
             <section class="section-card">
                 <h2>Our Mission</h2>
                 <p>We are here to save your hangouts. No more wasting time deciding where to go or scrolling endlessly through options. Where2Go helps you make quick decisions so you can spend less time planning and more time enjoying.</p>
@@ -711,12 +719,14 @@ body.dark-mode .footer-card {
 </div>
 
 <script>
+// Shared theme controls for the standalone about page.
 const themeKey = 'where2go-theme';
 const body = document.body;
 const themeToggle = document.getElementById('theme-toggle');
 const themeIcon = document.getElementById('theme-icon');
 const themeLabel = document.getElementById('theme-label');
 
+// Apply the saved light or dark mode and refresh the page icons.
 function applyTheme(theme) {
     const isDark = theme === 'dark';
     body.classList.toggle('dark-mode', isDark);

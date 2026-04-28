@@ -1,4 +1,5 @@
 <?php
+// Load discovery helpers and build the search results using the current session state.
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/place_data.php';
 
@@ -22,6 +23,7 @@ $businessCount = count(array_filter($searchResults, function ($place) {
     return ($place['source'] ?? '') === 'business';
 }));
 
+// Render one search result card with save metadata and the destination detail URL.
 function render_search_result_card($place, $loggedIn, $visitedLookup) {
     $place = is_array($place) ? $place : [];
     $placeId = (string) ($place['id'] ?? '');
@@ -100,6 +102,7 @@ function render_search_result_card($place, $loggedIn, $visitedLookup) {
 <link rel="stylesheet" href="assets/css/discover.css">
 </head>
 <body class="light-mode">
+<!-- Search page header with navigation, account access, and the theme toggle. -->
 <header class="topbar">
     <div class="topbar-inner">
         <div class="topbar-left">
@@ -152,6 +155,7 @@ function render_search_result_card($place, $loggedIn, $visitedLookup) {
 </header>
 
 <main class="main-inner">
+    <!-- Search hero that explains the local-only catalog and exposes quick filters. -->
     <section class="hero-panel">
         <span class="hero-chip"><i data-lucide="search"></i>Local-only search</span>
         <h1 class="hero-title">Search the original picks and approved partner businesses</h1>
@@ -178,6 +182,7 @@ function render_search_result_card($place, $loggedIn, $visitedLookup) {
         <span class="status-badge" id="results-status"><i data-lucide="badge-check"></i><?php echo count($searchResults); ?> places ready</span>
     </div>
 
+    <!-- Result grid that shows matching places or the empty-state fallback. -->
     <section class="results-shell">
         <?php if ($searchResults): ?>
         <div class="results-grid" id="results-grid">
@@ -195,6 +200,7 @@ function render_search_result_card($place, $loggedIn, $visitedLookup) {
 </main>
 
 <script>
+// Share login and saved-place ids with the dedicated search page script.
 window.where2goSearchData = <?php echo json_encode([
     'isLoggedIn' => $loggedIn,
     'visitedPlaceIds' => array_values($visitedPlaceIds),

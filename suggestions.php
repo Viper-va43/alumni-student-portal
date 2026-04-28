@@ -1,4 +1,5 @@
 <?php
+// Load the logged-in customer's saved history so the page can recommend new places.
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/place_data.php';
 
@@ -24,6 +25,7 @@ $suggestedPlaces = get_suggested_places($visitedPlaceIds, 6);
 <link rel="stylesheet" href="assets/css/account.css">
 </head>
 <body class="light-mode">
+<!-- Suggestions header with profile access, navigation, and theme controls. -->
 <header class="topbar">
     <div class="topbar-inner">
         <div class="topbar-left">
@@ -63,6 +65,7 @@ $suggestedPlaces = get_suggested_places($visitedPlaceIds, 6);
 </header>
 
 <main class="main-inner">
+    <!-- Hero section explaining why these recommendations were generated. -->
     <section class="hero-panel">
         <span class="eyebrow"><i data-lucide="sparkles"></i>Picked for you</span>
         <h1>Suggestions based on what you already saved</h1>
@@ -77,6 +80,7 @@ $suggestedPlaces = get_suggested_places($visitedPlaceIds, 6);
         </div>
     </section>
 
+    <!-- Recommendation panel that lists suggested places or explains why none remain. -->
     <section class="panel-card" style="margin-top:24px;">
         <div class="section-row">
             <div>
@@ -122,6 +126,7 @@ $suggestedPlaces = get_suggested_places($visitedPlaceIds, 6);
 </main>
 
 <script>
+// Reuse the shared account script by exposing the current saved-place ids.
 window.where2goPageData = <?php echo json_encode([
     'visitedPlaceIds' => array_values($visitedPlaceIds),
 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;

@@ -10,6 +10,8 @@
     const savedLookup = new Set();
     const storedSavedKey = 'where2go-saved-places';
 
+    // Apply the saved light or dark theme and refresh the Lucide icons.
+
     function applyTheme(theme) {
         const isDark = theme === 'dark';
         body.classList.toggle('dark-mode', isDark);
@@ -26,6 +28,8 @@
         lucide.createIcons();
     }
 
+    // Close any open profile dropdown before another menu interaction happens.
+
     function closeProfileMenus() {
         profileMenus.forEach((menu) => {
             const dropdown = menu.querySelector('[data-profile-dropdown]');
@@ -35,6 +39,8 @@
             }
         });
     }
+
+    // Wire the account avatar dropdown so it opens on click and closes outside the menu.
 
     function setupProfileMenus() {
         profileMenus.forEach((menu) => {
@@ -63,6 +69,8 @@
         });
     }
 
+    // Read the locally cached saved-place ids for quick UI hydration.
+
     function readStoredSavedIds() {
         try {
             const rawValue = sessionStorage.getItem(storedSavedKey);
@@ -73,9 +81,13 @@
         }
     }
 
+    // Persist the latest saved-place ids so reloads can repaint buttons immediately.
+
     function writeStoredSavedIds() {
         sessionStorage.setItem(storedSavedKey, JSON.stringify(Array.from(savedLookup)));
     }
+
+    // Combine server-provided ids with session storage into one save-state lookup.
 
     function hydrateSavedLookup() {
         savedLookup.clear();
@@ -95,6 +107,8 @@
         writeStoredSavedIds();
     }
 
+    // Replace the local save-state lookup after a successful save or remove request.
+
     function syncSavedLookup(nextVisitedIds) {
         savedLookup.clear();
 
@@ -107,6 +121,8 @@
         writeStoredSavedIds();
     }
 
+    // Update the save button text and icon to match the current saved state.
+
     function updateSaveButton(button, isSaved) {
         button.classList.toggle('is-saved', isSaved);
         button.innerHTML = isSaved
@@ -114,6 +130,8 @@
             : '<i data-lucide="bookmark-plus"></i>Save to profile';
         lucide.createIcons();
     }
+
+    // Send the save or remove request for a place card and refresh the button state.
 
     async function trackPlaceVisit(placeId, button) {
         const source = button.dataset.trackSource || 'catalog';
@@ -151,6 +169,8 @@
         }
     }
 
+    // Attach click handlers to every save button shown on account-related pages.
+
     function setupSaveButtons() {
         saveButtons.forEach((button) => {
             if (savedLookup.has(button.dataset.trackPlace)) {
@@ -162,6 +182,8 @@
             });
         });
     }
+
+    // Turn the profile carousels into horizontally scrolling sliders.
 
     function setupSliders() {
         sliderButtons.forEach((button) => {

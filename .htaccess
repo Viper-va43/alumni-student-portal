@@ -1,1 +1,9 @@
+# Prefer the application home pages when Apache resolves the folder root.
 DirectoryIndex Home.php index.php
+
+RewriteEngine On
+
+RewriteRule ^scan/?$ api-scan.php [L,QSA]
+RewriteRule ^user/?$ api-user.php [L,QSA]
+RewriteRule ^spin-reward/?$ api-spin-reward.php [L,QSA]
+RewriteRule ^rewards/?$ api-rewards.php [L,QSA]

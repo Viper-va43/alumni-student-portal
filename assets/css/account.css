@@ -1,3 +1,4 @@
+/* Default light theme tokens for profile, suggestions, and account-related pages. */
 :root {
     color-scheme: light;
     --page-bg: radial-gradient(circle at top, rgba(242, 108, 28, 0.18), transparent 34%), linear-gradient(180deg, #fffaf5 0%, #ffffff 34%, #fff4ea 100%);
@@ -14,6 +15,7 @@
     --warning-soft: rgba(198, 81, 8, 0.1);
 }
 
+/* Dark theme overrides that activate when the visitor switches modes. */
 body.dark-mode {
     color-scheme: dark;
     --page-bg: radial-gradient(circle at top, rgba(242, 108, 28, 0.2), transparent 28%), linear-gradient(180deg, #100b08 0%, #17110d 36%, #090705 100%);
@@ -57,6 +59,7 @@ input {
     font: inherit;
 }
 
+/* Sticky header styles for account navigation and theme controls. */
 .topbar {
     position: sticky;
     top: 0;
@@ -94,6 +97,12 @@ body.dark-mode .topbar {
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
+}
+
+.topbar-right {
+    margin-left: auto;
+    justify-content: flex-end;
+    flex: 1 1 auto;
 }
 
 .brand-link,
@@ -169,6 +178,8 @@ body.light-mode .logo {
 
 .profile-menu {
     position: relative;
+    margin-left: auto;
+    align-self: flex-start;
 }
 
 .profile-toggle {
@@ -245,6 +256,7 @@ body.light-mode .logo {
     padding: 32px 0 48px;
 }
 
+/* Shared card surfaces used by account summaries, saved places, and empty states. */
 .hero-panel,
 .panel-card,
 .place-card,
@@ -494,6 +506,7 @@ body.dark-mode .place-media {
     margin-top: 12px;
 }
 
+/* Responsive adjustments for stacked account layouts on smaller screens. */
 @media (max-width: 980px) {
     .layout-grid,
     .section-grid {
@@ -503,11 +516,20 @@ body.dark-mode .place-media {
 
 @media (max-width: 760px) {
     .topbar-inner,
-    .topbar-right,
     .hero-actions,
     .section-row {
         align-items: flex-start;
         flex-direction: column;
+    }
+
+    .topbar-right {
+        width: 100%;
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .profile-menu {
+        align-self: flex-end;
     }
 
     .hero-panel {

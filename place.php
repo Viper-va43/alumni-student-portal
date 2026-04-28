@@ -1,4 +1,5 @@
 <?php
+// Load shared business/catalog helpers and gather the state required for the detail page.
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/place_data.php';
 
@@ -31,7 +32,11 @@ $availableSlots = [];
 $calendarDays = [];
 $selectedLocation = null;
 $businessCanBook = false;
+$reviewResult = null;
+$existingReview = null;
+$canReviewBusiness = false;
 
+// Format stored opening or reservation times into a customer-friendly label.
 function format_display_time($time) {
     $time = trim((string) $time);
 
@@ -44,6 +49,7 @@ function format_display_time($time) {
     return $timestamp ? date('g:i A', $timestamp) : $time;
 }
 
+// Turn a location's weekly hours rows into readable day-by-day text.
 function build_location_hours_summary($hoursRows) {
     $hoursRows = is_array($hoursRows) ? $hoursRows : [];
     $lines = [];
@@ -64,6 +70,7 @@ function build_location_hours_summary($hoursRows) {
     return $lines;
 }
 
+// Choose the best visible label for a business location card or selector.
 function get_location_display_label($location) {
     $location = is_array($location) ? $location : [];
     $locationName = trim((string) ($location['location_name'] ?? ''));
@@ -80,6 +87,7 @@ function get_location_display_label($location) {
     return 'Business location';
 }
 
+// Derive a safe guest limit from the configured table capacity for a location.
 function get_location_guest_limit($location) {
     $location = is_array($location) ? $location : [];
     $tablesPerHour = max(1, (int) ($location['capacity_per_hour'] ?? 1));
@@ -87,6 +95,7 @@ function get_location_guest_limit($location) {
     return max(4, $tablesPerHour * 4);
 }
 
+// Build the detail page for an approved partner business and its booking flow.
 if ($businessId > 0) {
     if (!$business || !can_current_user_access_business($business)) {
         http_response_code(404);
@@ -150,6 +159,28 @@ if ($businessId > 0) {
         $selectedGuests = min($selectedGuests, get_location_guest_limit($selectedLocation));
     }
 
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'submit_review') {
+        if (!$loggedIn) {
+            $messages[] = ['type' => 'error', 'text' => 'Login with a customer account before leaving a review.'];
+        } else {
+            $reviewResult = submit_business_review(
+                $customerId,
+                $businessId,
+                (int) ($_POST['review_location_id'] ?? $selectedLocationId),
+                (int) ($_POST['review_rating'] ?? 5),
+                (string) ($_POST['review_comment'] ?? '')
+            );
+            $messages[] = [
+                'type' => !empty($reviewResult['ok']) ? 'success' : 'error',
+                'text' => (string) ($reviewResult['message'] ?? 'The review could not be saved right now.'),
+            ];
+
+            if (!empty($reviewResult['ok'])) {
+                $business = get_business_by_id($businessId);
+            }
+        }
+    }
+
     if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'book_location') {
         if (!$loggedIn) {
             $messages[] = ['type' => 'error', 'text' => 'Login with a customer account before making a reservation.'];
@@ -192,6 +223,12 @@ if ($businessId > 0) {
             }
         }
     }
+
+    if ($loggedIn) {
+        $existingReview = get_customer_review_for_business($customerId, $businessId);
+        $canReviewBusiness = can_customer_review_business($customerId, $businessId);
+    }
+// Fall back to the built-in curated catalog place details when no business id is supplied.
 } elseif ($catalogPlace) {
     $catalogPlace = normalize_catalog_place_for_discovery($catalogPlace);
     $pageTitle = (string) ($catalogPlace['name'] ?? 'Place details');
@@ -217,8 +254,10 @@ $savePayloadJson = htmlspecialchars(json_encode($savePayload, JSON_UNESCAPED_SLA
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest"></script>
 <link rel="stylesheet" href="assets/css/discover.css">
+<link rel="stylesheet" href="assets/css/rewards.css">
 </head>
 <body class="light-mode">
+<!-- Place detail header with navigation, account access, and the theme toggle. -->
 <header class="topbar">
     <div class="topbar-inner">
         <div class="topbar-left">
@@ -271,6 +310,7 @@ $savePayloadJson = htmlspecialchars(json_encode($savePayload, JSON_UNESCAPED_SLA
 </header>
 
 <main class="main-inner">
+    <!-- Hero section summarizing the active place and exposing its primary actions. -->
     <section class="hero-panel">
         <span class="hero-chip">
             <i data-lucide="<?php echo $source === 'business' ? 'badge-check' : 'sparkles'; ?>"></i>
@@ -298,6 +338,7 @@ $savePayloadJson = htmlspecialchars(json_encode($savePayload, JSON_UNESCAPED_SLA
     </section>
 
     <?php if ($messages): ?>
+    <!-- Primary content panel for the place overview, gallery, and save controls. -->
     <section class="detail-panel" style="margin-bottom:20px;">
         <?php foreach ($messages as $message): ?>
         <div class="status-badge" style="justify-content:flex-start;margin:8px 0;background:<?php echo $message['type'] === 'success' ? 'rgba(31,138,86,0.12)' : ($message['type'] === 'error' ? 'rgba(198,81,8,0.12)' : 'var(--panel-soft)'); ?>;color:<?php echo $message['type'] === 'success' ? 'var(--success)' : ($message['type'] === 'error' ? 'var(--accent)' : 'var(--muted)'); ?>;">
@@ -308,6 +349,7 @@ $savePayloadJson = htmlspecialchars(json_encode($savePayload, JSON_UNESCAPED_SLA
     </section>
     <?php endif; ?>
 
+    <!-- Secondary panel for reservation details, reviews, maps, or supporting metadata. -->
     <section class="detail-panel">
         <div class="detail-layout">
             <div>
@@ -366,6 +408,55 @@ $savePayloadJson = htmlspecialchars(json_encode($savePayload, JSON_UNESCAPED_SLA
                         <div class="review-card"><p><?php echo htmlspecialchars($source === 'business' ? 'This business does not have public reviews yet.' : 'This place is one of the original Where2Go picks you added together for the platform launch.', ENT_QUOTES, 'UTF-8'); ?></p></div>
                         <?php endif; ?>
                     </div>
+
+                    <?php if ($source === 'business'): ?>
+                    <div class="detail-panel" style="margin-top:18px;">
+                        <h3 style="margin:0 0 12px;">Leave a review</h3>
+                        <p class="reward-note" style="margin:0 0 14px;">Your first review for this business earns 5 reward points. Later edits keep your review fresh without adding extra points.</p>
+
+                        <?php if (!$loggedIn): ?>
+                        <div class="review-card">
+                            <p style="margin-top:0;">Login to share a review and collect your review bonus.</p>
+                            <a class="secondary-btn" href="login.php?redirect=<?php echo rawurlencode('place.php?business_id=' . $businessId); ?>"><i data-lucide="log-in"></i>Login to review</a>
+                        </div>
+                        <?php elseif (!$canReviewBusiness && !$existingReview): ?>
+                        <div class="review-card">
+                            <p style="margin:0;">Review rewards unlock after your first QR check-in at this business. Scan the in-store QR code once, then come back here to post your review.</p>
+                        </div>
+                        <?php else: ?>
+                        <form action="place.php?business_id=<?php echo $businessId; ?>" method="POST" class="reward-form-grid" style="margin-top:0;">
+                            <input type="hidden" name="action" value="submit_review">
+                            <div class="reward-form-grid two-up">
+                                <label class="field">
+                                    <span>Rating</span>
+                                    <select name="review_rating">
+                                        <?php $selectedRating = (int) ($existingReview['rating'] ?? 5); ?>
+                                        <?php for ($ratingOption = 5; $ratingOption >= 1; $ratingOption--): ?>
+                                        <option value="<?php echo $ratingOption; ?>"<?php echo $selectedRating === $ratingOption ? ' selected' : ''; ?>><?php echo $ratingOption; ?>/5</option>
+                                        <?php endfor; ?>
+                                    </select>
+                                </label>
+                                <label class="field">
+                                    <span>Location</span>
+                                    <select name="review_location_id">
+                                        <?php foreach (($business['locations'] ?? []) as $location): ?>
+                                        <?php $reviewLocationId = (int) ($existingReview['location_id'] ?? ($selectedLocationId ?: ($business['primary_location']['location_id'] ?? 0))); ?>
+                                        <option value="<?php echo (int) ($location['location_id'] ?? 0); ?>"<?php echo $reviewLocationId === (int) ($location['location_id'] ?? 0) ? ' selected' : ''; ?>><?php echo htmlspecialchars(get_location_display_label($location), ENT_QUOTES, 'UTF-8'); ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </label>
+                            </div>
+                            <label class="field">
+                                <span>Your review</span>
+                                <textarea name="review_comment" placeholder="Tell other customers what stood out about the experience."><?php echo htmlspecialchars((string) ($existingReview['comment'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></textarea>
+                            </label>
+                            <div class="card-actions">
+                                <button class="primary-btn" type="submit"><i data-lucide="message-square-heart"></i><?php echo $existingReview ? 'Update review' : 'Post review'; ?></button>
+                            </div>
+                        </form>
+                        <?php endif; ?>
+                    </div>
+                    <?php endif; ?>
                 </div>
             </div>
 
@@ -553,6 +644,7 @@ $savePayloadJson = htmlspecialchars(json_encode($savePayload, JSON_UNESCAPED_SLA
 </main>
 
 <script>
+// Provide the detail-page script with login state and the saved-place ids for this session.
 window.where2goPlaceData = <?php echo json_encode([
     'isLoggedIn' => $loggedIn,
     'visitedPlaceIds' => array_values($visitedPlaceIds),

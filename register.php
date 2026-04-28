@@ -1,8 +1,10 @@
-﻿<?php
+<?php
+// Load the shared auth helpers and open the customer database connection for registration.
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/functions.php';
 
 start_session();
+$redirectTarget = get_safe_internal_redirect_target($_POST['redirect'] ?? ($_GET['redirect'] ?? ''), 'Home.php');
 
 $database = new Database();
 $conn = $database->getConnection();
@@ -21,6 +23,7 @@ $dob = $_POST['Date_Of_Birth'] ?? '';
 $gender = trim($_POST['Gender'] ?? '');
 $nationality = trim($_POST['Nationality'] ?? '');
 
+// Validate the submitted profile details before creating a new customer account.
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($first_name === '' || $last_name === '' || $email === '' || $password === '') {
         $errors[] = 'First name, last name, email, and password are required.';
@@ -82,7 +85,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $nationality_value,
             ]);
 
-            header('Location: Home.php');
+            $loginRedirect = 'login.php?registered=1';
+
+            if ($redirectTarget !== 'Home.php') {
+                $loginRedirect .= '&redirect=' . rawurlencode($redirectTarget);
+            }
+
+            header('Location: ' . $loginRedirect);
             exit;
         } catch (PDOException $e) {
             $errors[] = 'The form is working, but the Where2Go database could not save the account yet. Repair the tables in phpMyAdmin, then try again.';
@@ -102,6 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest"></script>
 <style>
+/* Default light theme tokens for the customer registration page. */
 :root {
     color-scheme: light;
     --page-bg: radial-gradient(circle at top, rgba(242, 108, 28, 0.16), transparent 38%), linear-gradient(180deg, #fffaf5 0%, #ffffff 28%, #fff5ed 100%);
@@ -126,6 +136,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     --warning-border: rgba(242, 108, 28, 0.18);
 }
 
+/* Dark theme overrides that activate when the visitor switches modes. */
 body.dark-mode {
     color-scheme: dark;
     --page-bg: radial-gradient(circle at top, rgba(242, 108, 28, 0.22), transparent 32%), linear-gradient(180deg, #100b08 0%, #17100c 34%, #090705 100%);
@@ -176,6 +187,7 @@ img {
     min-height: 100vh;
 }
 
+/* Sticky header styles for the registration page navigation and theme toggle. */
 .topbar {
     position: sticky;
     top: 0;
@@ -273,6 +285,7 @@ body.light-mode .logo {
     padding: 52px 0 72px;
 }
 
+/* Hero panel styles for the account-creation introduction and notices. */
 .hero-panel {
     overflow: hidden;
     border-radius: 32px;
@@ -489,6 +502,7 @@ select:focus {
 </head>
 <body class="light-mode">
 <div class="page-shell">
+    <!-- Header that keeps registration connected to the main site and theme control. -->
     <header class="topbar">
         <div class="topbar-inner">
             <div class="brand-wrap">
@@ -508,7 +522,7 @@ select:focus {
                 <span class="top-link">Welcome, <?php echo htmlspecialchars($customerName !== '' ? $customerName : 'Traveler', ENT_QUOTES, 'UTF-8'); ?></span>
                 <a class="top-cta" href="logout.php">Logout</a>
                 <?php else: ?>
-                <a class="top-link" href="login.php">Already have an account?</a>
+                <a class="top-link" href="login.php<?php echo $redirectTarget !== 'Home.php' ? '?redirect=' . rawurlencode($redirectTarget) : ''; ?>">Already have an account?</a>
                 <span class="top-cta">Registration</span>
                 <?php endif; ?>
             </div>
@@ -516,11 +530,16 @@ select:focus {
     </header>
 
     <main class="main-inner">
+        <!-- Intro panel explaining the customer registration flow. -->
         <section class="hero-panel">
             <h1>Create your Where2Go account</h1>
             <p>The registration page follows the same light and dark theme system as the homepage, so the whole account flow feels connected while the `where2go` database keeps taking shape.</p>
+            <?php if ($redirectTarget !== 'Home.php'): ?>
+            <p style="margin-top:12px;">After registration, you will be sent to login and then returned to the QR reward page you opened.</p>
+            <?php endif; ?>
         </section>
 
+        <!-- Form area that captures the new customer's profile and login details. -->
         <section class="form-shell">
             <div class="form-card">
                 <h2 class="section-title">Registration form</h2>
@@ -535,6 +554,7 @@ select:focus {
                 <?php endif; ?>
 
                 <form action="register.php" method="POST">
+                    <input type="hidden" name="redirect" value="<?php echo htmlspecialchars($redirectTarget, ENT_QUOTES, 'UTF-8'); ?>">
                     <div class="form-grid">
                         <div class="field">
                             <label for="first_name">First name</label>
@@ -593,7 +613,7 @@ select:focus {
 
                     <div class="actions">
                         <button class="button" type="submit">Create account</button>
-                        <a class="button-secondary" href="Home.php">Back to homepage</a>
+                        <a class="button-secondary" href="<?php echo htmlspecialchars($redirectTarget !== 'Home.php' ? ('login.php?redirect=' . rawurlencode($redirectTarget)) : 'Home.php', ENT_QUOTES, 'UTF-8'); ?>"><?php echo $redirectTarget !== 'Home.php' ? 'Open login' : 'Back to homepage'; ?></a>
                     </div>
                 </form>
             </div>
@@ -624,12 +644,14 @@ select:focus {
 </div>
 
 <script>
+// Shared theme controls for the standalone registration page.
 const themeKey = 'where2go-theme';
 const body = document.body;
 const themeToggle = document.getElementById('theme-toggle');
 const themeIcon = document.getElementById('theme-icon');
 const themeLabel = document.getElementById('theme-label');
 
+// Apply the saved light or dark mode and refresh the page icons.
 function applyTheme(theme) {
     const isDark = theme === 'dark';
     body.classList.toggle('dark-mode', isDark);

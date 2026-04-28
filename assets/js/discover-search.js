@@ -11,6 +11,8 @@
     const storedSavedKey = 'where2go-saved-places';
     const isLoggedIn = Boolean(pageData.isLoggedIn);
 
+    // Apply the saved light or dark theme and refresh the Lucide icons.
+
     function applyTheme(theme) {
         const isDark = theme === 'dark';
         body.classList.toggle('dark-mode', isDark);
@@ -19,6 +21,8 @@
         themeLabel.textContent = isDark ? 'Dark mode' : 'Light mode';
         lucide.createIcons();
     }
+
+    // Close any open profile dropdown before another menu interaction happens.
 
     function closeProfileMenus() {
         profileMenus.forEach((menu) => {
@@ -29,6 +33,8 @@
             }
         });
     }
+
+    // Wire the account avatar dropdown so it opens on click and closes outside the menu.
 
     function setupProfileMenus() {
         profileMenus.forEach((menu) => {
@@ -57,6 +63,8 @@
         });
     }
 
+    // Read the locally cached saved-place ids for quick UI hydration.
+
     function readStoredSavedIds() {
         if (!isLoggedIn) {
             return [];
@@ -71,6 +79,8 @@
         }
     }
 
+    // Persist the latest saved-place ids so reloads can repaint buttons immediately.
+
     function writeStoredSavedIds() {
         if (!isLoggedIn) {
             sessionStorage.removeItem(storedSavedKey);
@@ -79,6 +89,8 @@
 
         sessionStorage.setItem(storedSavedKey, JSON.stringify(Array.from(savedLookup)));
     }
+
+    // Combine server-provided ids with session storage into one save-state lookup.
 
     function hydrateSavedLookup() {
         savedLookup.clear();
@@ -98,6 +110,8 @@
         writeStoredSavedIds();
     }
 
+    // Replace the local save-state lookup after a successful save or remove request.
+
     function syncSavedLookup(nextVisitedIds) {
         savedLookup.clear();
 
@@ -109,6 +123,8 @@
 
         writeStoredSavedIds();
     }
+
+    // Update the search result save button according to the visitor's login and saved state.
 
     function updateSaveButton(button, isSaved) {
         if (!button) {
@@ -128,6 +144,8 @@
             : '<i data-lucide="bookmark-plus"></i>Save to profile';
         lucide.createIcons();
     }
+
+    // Send the save or remove request for a search result card.
 
     async function trackPlaceVisit(button) {
         const placeId = button.dataset.savePlace || '';

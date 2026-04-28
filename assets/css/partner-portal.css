@@ -1,3 +1,4 @@
+/* Two-column shell used by partner auth and management screens. */
 .auth-shell {
     display: grid;
     grid-template-columns: minmax(0, 1.04fr) minmax(320px, 0.96fr);
@@ -35,6 +36,7 @@
     line-height: 1.7;
 }
 
+/* Reusable layout utilities for forms, stat cards, review lists, and metadata rows. */
 .form-grid,
 .grid-two,
 .grid-three,
@@ -190,6 +192,7 @@
     font-size: 2rem;
 }
 
+/* Status badge styles used for pending, approved, and rejected business states. */
 .status-pill {
     display: inline-flex;
     align-items: center;
@@ -275,6 +278,7 @@
     min-height: 96px;
 }
 
+/* Grid used for the side-by-side approved and rejected review history lists. */
 .review-history-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     margin-top: 18px;
@@ -326,12 +330,52 @@
     padding: 26px;
 }
 
+.qr-location-list {
+    margin-top: 14px;
+}
+
+.qr-location-card {
+    background: rgba(242, 108, 28, 0.06);
+}
+
+.qr-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.08fr) minmax(180px, 0.92fr);
+    gap: 18px;
+    align-items: center;
+}
+
+.qr-copy {
+    display: grid;
+    gap: 10px;
+}
+
+.qr-preview {
+    min-height: 216px;
+    border-radius: 28px;
+    border: 1px dashed rgba(242, 108, 28, 0.28);
+    background: linear-gradient(135deg, rgba(242, 108, 28, 0.14), rgba(255, 255, 255, 0.88));
+    display: grid;
+    place-items: center;
+    padding: 18px;
+}
+
+.qr-preview canvas {
+    max-width: 100%;
+    height: auto;
+    border-radius: 18px;
+    background: #fff;
+    padding: 10px;
+}
+
+/* Responsive adjustments for stacked partner/admin layouts on smaller screens. */
 @media (max-width: 980px) {
     .auth-shell,
     .grid-two,
     .grid-three,
     .inline-fields,
-    .review-history-grid {
+    .review-history-grid,
+    .qr-grid {
         grid-template-columns: 1fr;
     }
 }

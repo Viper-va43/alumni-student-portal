@@ -1,4 +1,5 @@
 <?php
+// Handle partner authentication separately from customer accounts.
 require_once __DIR__ . '/includes/functions.php';
 
 start_session();
@@ -14,6 +15,7 @@ $password = $_POST['password'] ?? '';
 $registered = ($_GET['registered'] ?? '') === '1';
 $loggedOut = ($_GET['logged_out'] ?? '') === '1';
 
+// Validate the submitted credentials and start a partner session on success.
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     if ($email === '' || $password === '') {
         $errors[] = 'Email and password are required.';
@@ -51,6 +53,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 <link rel="stylesheet" href="assets/css/partner-portal.css">
 </head>
 <body class="light-mode">
+<!-- Partner login header linking back to discovery and the partner registration flow. -->
 <header class="topbar">
     <div class="topbar-inner">
         <div class="topbar-left">
@@ -73,12 +76,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 </header>
 
 <main class="main-inner">
+    <!-- Hero panel explaining what the partner portal can manage. -->
     <section class="hero-panel">
         <span class="eyebrow"><i data-lucide="store"></i>Partner portal</span>
         <h1>Sign in to manage your listing</h1>
         <p>Use your dedicated business-owner account to add businesses, update offers, adjust reservation capacity, and watch your approval status from one place.</p>
     </section>
 
+    <!-- Two-column area with a dashboard preview and the actual login form. -->
+    <!-- Two-column area with a dashboard preview and the actual login form. -->
     <section class="auth-shell" style="margin-top:24px;">
         <div class="panel-card">
             <h2>Inside the dashboard</h2>
@@ -137,6 +143,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 </main>
 
 <script>
+// Keep the shared account script initialized even though this page does not expose saved places.
 window.where2goPageData = <?php echo json_encode(['visitedPlaceIds' => []], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
 </script>
 <script src="assets/js/account.js"></script>

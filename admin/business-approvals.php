@@ -1,4 +1,5 @@
 <?php
+// Load admin-only business review helpers and block non-admin sessions.
 require_once __DIR__ . '/../includes/functions.php';
 
 start_session();
@@ -6,6 +7,7 @@ require_admin_user();
 
 $messages = [];
 
+// Choose the best visible label for a reviewed business location.
 function admin_location_label($location) {
     $location = is_array($location) ? $location : [];
     $locationName = trim((string) ($location['location_name'] ?? ''));
@@ -22,6 +24,7 @@ function admin_location_label($location) {
     return 'Business location';
 }
 
+// Convert weekly business hours rows into readable admin review text.
 function admin_build_location_hours_summary($hoursRows) {
     $hoursRows = is_array($hoursRows) ? $hoursRows : [];
     $lines = [];
@@ -44,6 +47,7 @@ function admin_build_location_hours_summary($hoursRows) {
     return $lines;
 }
 
+// Look up the compact review summary that matches the selected business id.
 function admin_find_review_summary($businesses, $businessId) {
     foreach ($businesses as $business) {
         if ((int) ($business['business_id'] ?? 0) === $businessId) {
@@ -54,6 +58,7 @@ function admin_find_review_summary($businesses, $businessId) {
     return null;
 }
 
+// Process approve, reject, or reset actions posted from the pending review cards.
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $businessId = (int) ($_POST['business_id'] ?? 0);
     $status = trim((string) ($_POST['status'] ?? ''));
@@ -116,6 +121,7 @@ $selectedReviewedBusiness = $selectedReviewSummary ? get_business_by_id((int) ($
 <link rel="stylesheet" href="../assets/css/partner-portal.css">
 </head>
 <body class="light-mode">
+<!-- Admin review header with shortcuts back to discovery and the partner workspace. -->
 <header class="topbar">
     <div class="topbar-inner">
         <div class="topbar-left">
@@ -132,12 +138,14 @@ $selectedReviewedBusiness = $selectedReviewSummary ? get_business_by_id((int) ($
             <a class="nav-link" href="../Home.php">Home</a>
             <a class="nav-link" href="../search.php">Search</a>
             <a class="nav-link" href="../partner-dashboard.php">Partner dashboard</a>
+            <a class="nav-link" href="reward-config.php">Reward config</a>
             <a class="primary-btn" href="../logout.php"><i data-lucide="log-out"></i>Logout</a>
         </nav>
     </div>
 </header>
 
 <main class="main-inner">
+    <!-- Hero panel summarizing the current approval queues. -->
     <section class="hero-panel">
         <span class="eyebrow"><i data-lucide="shield-check"></i>Admin approvals</span>
         <h1>Review partner businesses before they go public</h1>
@@ -157,6 +165,7 @@ $selectedReviewedBusiness = $selectedReviewSummary ? get_business_by_id((int) ($
     </div>
     <?php endif; ?>
 
+    <!-- Main review workspace with pending approvals on the left and review history on the right. -->
     <section class="layout-grid" style="margin-top:24px;">
         <section class="panel-card">
             <div class="section-row">
@@ -401,6 +410,7 @@ $selectedReviewedBusiness = $selectedReviewSummary ? get_business_by_id((int) ($
 </main>
 
 <script>
+// Keep the shared account script initialized even though this page does not expose saved places.
 window.where2goPageData = <?php echo json_encode(['visitedPlaceIds' => []], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
 </script>
 <script src="../assets/js/account.js"></script>

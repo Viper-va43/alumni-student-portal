@@ -242,7 +242,9 @@ function is_admin_user() {
 function require_admin_user() {
 
     if (!is_logged_in()) {
-        header("Location: login.php");
+        $loginPath = rtrim((string) get_where2go_base_url(), '/');
+        $loginPath = $loginPath !== '' ? $loginPath . '/login.php' : '../login.php';
+        header("Location: " . $loginPath);
         exit();
     }
 
@@ -452,6 +454,56 @@ function ensure_customer_place_visits_column($conn, $column_name, $alter_sql) {
     }
 
 }
+
+
+/* -------------------------
+   ENSURE TABLE COLUMN
+------------------------- */
+function ensure_table_column($conn, $table_name, $column_name, $alter_sql) {
+
+    $table_name = preg_replace('/[^a-zA-Z0-9_]/', '', (string) $table_name);
+    $column_name = trim((string) $column_name);
+
+    if (!$conn || $table_name === '' || $column_name === '') {
+        return;
+    }
+
+    $escaped = $conn->real_escape_string($column_name);
+    $result = $conn->query("SHOW COLUMNS FROM `{$table_name}` LIKE '{$escaped}'");
+
+    if ($result && $result->num_rows === 0) {
+        $conn->query($alter_sql);
+    }
+
+}
+
+
+/* -------------------------
+   ENSURE TABLE INDEX
+------------------------- */
+function ensure_table_index($conn, $table_name, $index_name, $alter_sql) {
+
+    $table_name = preg_replace('/[^a-zA-Z0-9_]/', '', (string) $table_name);
+    $index_name = trim((string) $index_name);
+
+    if (!$conn || $table_name === '' || $index_name === '') {
+        return;
+    }
+
+    $escaped = $conn->real_escape_string($index_name);
+    $result = $conn->query("SHOW INDEX FROM `{$table_name}` WHERE Key_name = '{$escaped}'");
+
+    if ($result && $result->num_rows === 0) {
+        $conn->query($alter_sql);
+    }
+
+}
+
+
+/* -------------------------
+   REWARDS LAYER
+------------------------- */
+require_once __DIR__ . '/rewards.php';
 
 
 /* -------------------------
@@ -1134,8 +1186,11 @@ function get_business_locations($business_id) {
         return [];
     }
 
+    ensure_where2go_rewards_schema();
+
     $conn = db_connect();
-    $sql = "SELECT location_id, business_id, location_name, address, phone, capacity_per_hour, has_reservations
+    $sql = "SELECT location_id, business_id, location_name, address, phone, promo_code, promo_details, qr_token,
+                   capacity_per_hour, has_reservations, checkin_enabled
             FROM business_locations
             WHERE business_id = ?
             ORDER BY location_id ASC";
@@ -1151,6 +1206,9 @@ function get_business_locations($business_id) {
     $locations = [];
 
     while ($row = $result->fetch_assoc()) {
+        $row['checkin_enabled'] = (int) ($row['checkin_enabled'] ?? 1);
+        $row['qr_token'] = ensure_location_qr_token((int) ($row['location_id'] ?? 0), (string) ($row['qr_token'] ?? ''), $conn);
+        $row['checkin_url'] = build_location_checkin_url((string) ($row['qr_token'] ?? ''));
         $locations[] = $row;
     }
 
@@ -1533,8 +1591,12 @@ function get_partner_dashboard_summary($partner_id) {
             'reservation_count' => 0,
             'upcoming_reservation_count' => 0,
             'active_offer_count' => 0,
+            'checkin_count' => 0,
+            'points_issued' => 0,
         ];
     }
+
+    ensure_where2go_rewards_schema();
 
     $conn = db_connect();
     $summary = [
@@ -1543,6 +1605,8 @@ function get_partner_dashboard_summary($partner_id) {
         'reservation_count' => 0,
         'upcoming_reservation_count' => 0,
         'active_offer_count' => 0,
+        'checkin_count' => 0,
+        'points_issued' => 0,
     ];
 
     $queries = [
@@ -1570,6 +1634,14 @@ function get_partner_dashboard_summary($partner_id) {
                                    AND bo.is_active = 1
                                    AND (bo.start_date IS NULL OR bo.start_date <= CURDATE())
                                    AND (bo.end_date IS NULL OR bo.end_date >= CURDATE())",
+        'checkin_count' => "SELECT COUNT(*) AS value
+                            FROM customer_checkins cc
+                            INNER JOIN businesses b ON b.business_id = cc.business_id
+                            WHERE b.partner_id = ?",
+        'points_issued' => "SELECT COALESCE(SUM(cc.points_awarded), 0) AS value
+                            FROM customer_checkins cc
+                            INNER JOIN businesses b ON b.business_id = cc.business_id
+                            WHERE b.partner_id = ?",
     ];
 
     foreach ($queries as $key => $sql) {
@@ -1639,6 +1711,53 @@ function get_partner_upcoming_reservations($partner_id, $limit = 8) {
     }
 
     return $reservations;
+
+}
+
+
+/* -------------------------
+   PARTNER RECENT CHECK-INS
+------------------------- */
+function get_partner_recent_checkins($partner_id, $limit = 8) {
+
+    $partner_id = (int) $partner_id;
+    $limit = max(1, (int) $limit);
+
+    if ($partner_id <= 0) {
+        return [];
+    }
+
+    ensure_where2go_rewards_schema();
+
+    $conn = db_connect();
+    $sql = "SELECT cc.id, cc.customer_id, cc.business_id, cc.location_id, cc.promo_code_snapshot,
+                   cc.points_awarded, cc.xp_awarded, cc.checkin_date, cc.checked_in_at,
+                   b.name AS business_name,
+                   bl.location_name, bl.address AS location_address,
+                   c.First_N, c.Last_N
+            FROM customer_checkins cc
+            INNER JOIN businesses b ON b.business_id = cc.business_id
+            INNER JOIN business_locations bl ON bl.location_id = cc.location_id
+            LEFT JOIN customers c ON c.Customer_ID = cc.customer_id
+            WHERE b.partner_id = ?
+            ORDER BY cc.checked_in_at DESC
+            LIMIT " . $limit;
+    $stmt = $conn->prepare($sql);
+
+    if (!$stmt) {
+        return [];
+    }
+
+    $stmt->bind_param("i", $partner_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $checkins = [];
+
+    while ($row = $result->fetch_assoc()) {
+        $checkins[] = $row;
+    }
+
+    return $checkins;
 
 }
 
@@ -1810,6 +1929,95 @@ function current_partner_owns_business($business_id) {
     $result = $stmt->get_result();
 
     return (bool) ($result && $result->fetch_assoc());
+
+}
+
+
+/* -------------------------
+   PARTNER OWNS LOCATION
+------------------------- */
+function partner_owns_location($partner_id, $location_id) {
+
+    $partner_id = (int) $partner_id;
+    $location_id = (int) $location_id;
+
+    if ($partner_id <= 0 || $location_id <= 0) {
+        return false;
+    }
+
+    $conn = db_connect();
+    $sql = "SELECT bl.location_id
+            FROM business_locations bl
+            INNER JOIN businesses b ON b.business_id = bl.business_id
+            WHERE bl.location_id = ?
+              AND b.partner_id = ?
+            LIMIT 1";
+    $stmt = $conn->prepare($sql);
+
+    if (!$stmt) {
+        return false;
+    }
+
+    $stmt->bind_param("ii", $location_id, $partner_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    return (bool) ($result && $result->fetch_assoc());
+
+}
+
+
+/* -------------------------
+   REFRESH LOCATION QR
+------------------------- */
+function refresh_partner_location_qr_token($partner_id, $location_id) {
+
+    $partner_id = (int) $partner_id;
+    $location_id = (int) $location_id;
+
+    if (!partner_owns_location($partner_id, $location_id)) {
+        return [
+            'ok' => false,
+            'message' => 'You can only refresh QR codes for locations on your own partner account.',
+        ];
+    }
+
+    ensure_where2go_rewards_schema();
+
+    $conn = db_connect();
+    $token = generate_unique_location_qr_token($conn);
+
+    if ($token === '') {
+        return [
+            'ok' => false,
+            'message' => 'A fresh QR token could not be generated right now.',
+        ];
+    }
+
+    $stmt = $conn->prepare("UPDATE business_locations SET qr_token = ? WHERE location_id = ?");
+
+    if (!$stmt) {
+        return [
+            'ok' => false,
+            'message' => 'The QR update could not be prepared right now.',
+        ];
+    }
+
+    $stmt->bind_param("si", $token, $location_id);
+
+    if (!$stmt->execute()) {
+        return [
+            'ok' => false,
+            'message' => 'The QR code could not be refreshed right now.',
+        ];
+    }
+
+    return [
+        'ok' => true,
+        'message' => 'A fresh QR code was generated for this location.',
+        'token' => $token,
+        'url' => build_location_checkin_url($token),
+    ];
 
 }
 
@@ -2027,6 +2235,8 @@ function normalize_partner_locations_input($locations, $legacyData = []) {
         $locationName = trim((string) ($location['location_name'] ?? ''));
         $address = trim((string) ($location['address'] ?? ''));
         $phone = trim((string) ($location['phone'] ?? ''));
+        $promoCode = strtoupper(trim((string) ($location['promo_code'] ?? '')));
+        $promoDetails = trim((string) ($location['promo_details'] ?? ''));
 
         if ($locationName === '' && $address === '' && $phone === '') {
             continue;
@@ -2037,8 +2247,11 @@ function normalize_partner_locations_input($locations, $legacyData = []) {
             'location_name' => $locationName,
             'address' => $address,
             'phone' => $phone,
+            'promo_code' => $promoCode,
+            'promo_details' => $promoDetails,
             'capacity_per_hour' => max(1, (int) ($location['capacity_per_hour'] ?? 10)),
             'has_reservations' => !empty($location['has_reservations']) ? 1 : 0,
+            'checkin_enabled' => array_key_exists('checkin_enabled', $location) ? (!empty($location['checkin_enabled']) ? 1 : 0) : 1,
             'hours' => normalize_hours_input_rows($location['hours'] ?? []),
         ];
     }
@@ -2075,8 +2288,11 @@ function get_partner_business_form_data($partner_id, $business_id = 0) {
             'location_name' => '',
             'address' => '',
             'phone' => '',
+            'promo_code' => '',
+            'promo_details' => '',
             'capacity_per_hour' => 10,
             'has_reservations' => 1,
+            'checkin_enabled' => 1,
             'hours' => get_default_hours_rows(),
         ]],
         'photos' => [],
@@ -2157,8 +2373,9 @@ function save_partner_business_submission($partner_id, $data, $business_id = 0) 
     $customType = trim((string) ($data['custom_type'] ?? ''));
     $logoUrl = trim((string) ($data['logo_url'] ?? ''));
     $website = trim((string) ($data['website'] ?? ''));
+    $settings = get_where2go_rewards_program_settings();
     $locations = normalize_partner_locations_input($data['locations'] ?? [], $data);
-    $photoUrls = normalize_url_input_list($data['photo_urls'] ?? []);
+    $photoUrls = array_slice(normalize_url_input_list($data['photo_urls'] ?? []), 0, max(1, (int) ($settings['max_business_photos'] ?? 6)));
     $menuItems = is_array($data['menus'] ?? null) ? $data['menus'] : [];
     $offerItems = is_array($data['offers'] ?? null) ? $data['offers'] : [];
     $allowedTypes = ['restaurant', 'cafe', 'activity', 'entertainment', 'nightlife', 'other'];
@@ -2178,6 +2395,8 @@ function save_partner_business_submission($partner_id, $data, $business_id = 0) 
     if ($business_id > 0 && !current_partner_owns_business($business_id)) {
         return ['ok' => false, 'message' => 'You can only edit businesses on your own account.'];
     }
+
+    ensure_where2go_rewards_schema();
 
     $conn = db_connect();
     $currentBusiness = $business_id > 0 ? get_business_by_id($business_id) : null;
@@ -2251,12 +2470,16 @@ function save_partner_business_submission($partner_id, $data, $business_id = 0) 
             $locationName = trim((string) ($location['location_name'] ?? ''));
             $address = trim((string) ($location['address'] ?? ''));
             $phone = trim((string) ($location['phone'] ?? ''));
+            $promoCode = strtoupper(trim((string) ($location['promo_code'] ?? '')));
+            $promoDetails = trim((string) ($location['promo_details'] ?? ''));
             $capacityPerHour = max(1, (int) ($location['capacity_per_hour'] ?? 10));
             $hasReservations = !empty($location['has_reservations']) ? 1 : 0;
+            $checkinEnabled = array_key_exists('checkin_enabled', $location) ? (!empty($location['checkin_enabled']) ? 1 : 0) : 1;
 
             if ($locationId > 0 && in_array($locationId, $existingLocationIds, true)) {
                 $sql = "UPDATE business_locations
-                        SET location_name = ?, address = ?, phone = ?, capacity_per_hour = ?, has_reservations = ?
+                        SET location_name = ?, address = ?, phone = ?, promo_code = ?, promo_details = ?,
+                            capacity_per_hour = ?, has_reservations = ?, checkin_enabled = ?
                         WHERE location_id = ? AND business_id = ?";
                 $stmt = $conn->prepare($sql);
 
@@ -2264,21 +2487,25 @@ function save_partner_business_submission($partner_id, $data, $business_id = 0) 
                     throw new Exception('Location update could not be prepared.');
                 }
 
-                $stmt->bind_param("sssiiii", $locationName, $address, $phone, $capacityPerHour, $hasReservations, $locationId, $business_id);
+                $stmt->bind_param("sssssiiiii", $locationName, $address, $phone, $promoCode, $promoDetails, $capacityPerHour, $hasReservations, $checkinEnabled, $locationId, $business_id);
 
                 if (!$stmt->execute()) {
                     throw new Exception('Location update failed.');
                 }
+
+                ensure_location_qr_token($locationId, '', $conn);
             } else {
-                $sql = "INSERT INTO business_locations (business_id, location_name, address, phone, capacity_per_hour, has_reservations)
-                        VALUES (?, ?, ?, ?, ?, ?)";
+                $qrToken = generate_unique_location_qr_token($conn);
+                $sql = "INSERT INTO business_locations
+                        (business_id, location_name, address, phone, promo_code, promo_details, qr_token, capacity_per_hour, has_reservations, checkin_enabled)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
                 $stmt = $conn->prepare($sql);
 
                 if (!$stmt) {
                     throw new Exception('Location insert could not be prepared.');
                 }
 
-                $stmt->bind_param("isssii", $business_id, $locationName, $address, $phone, $capacityPerHour, $hasReservations);
+                $stmt->bind_param("issssssiii", $business_id, $locationName, $address, $phone, $promoCode, $promoDetails, $qrToken, $capacityPerHour, $hasReservations, $checkinEnabled);
 
                 if (!$stmt->execute()) {
                     throw new Exception('Location insert failed.');
@@ -2559,8 +2786,11 @@ function get_location_by_id($location_id) {
         return null;
     }
 
+    ensure_where2go_rewards_schema();
+
     $conn = db_connect();
-    $sql = "SELECT bl.location_id, bl.business_id, bl.location_name, bl.address, bl.phone, bl.capacity_per_hour, bl.has_reservations,
+    $sql = "SELECT bl.location_id, bl.business_id, bl.location_name, bl.address, bl.phone, bl.promo_code, bl.promo_details,
+                   bl.qr_token, bl.capacity_per_hour, bl.has_reservations, bl.checkin_enabled,
                    b.name AS business_name, b.type AS business_type, b.custom_type, b.website, b.approval_status
             FROM business_locations bl
             INNER JOIN businesses b ON b.business_id = bl.business_id
@@ -2575,8 +2805,18 @@ function get_location_by_id($location_id) {
     $stmt->bind_param("i", $location_id);
     $stmt->execute();
     $result = $stmt->get_result();
+    $location = $result ? $result->fetch_assoc() : null;
 
-    return $result ? $result->fetch_assoc() : null;
+    if (!$location) {
+        return null;
+    }
+
+    $location['checkin_enabled'] = (int) ($location['checkin_enabled'] ?? 1);
+    $location['qr_token'] = ensure_location_qr_token((int) ($location['location_id'] ?? 0), (string) ($location['qr_token'] ?? ''), $conn);
+    $location['checkin_url'] = build_location_checkin_url((string) ($location['qr_token'] ?? ''));
+    $location['type_label'] = format_business_type_label($location['business_type'] ?? 'other', $location['custom_type'] ?? '');
+
+    return $location;
 
 }
 

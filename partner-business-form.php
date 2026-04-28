@@ -1,4 +1,5 @@
 <?php
+// Load the partner business helpers and protect the form behind partner authentication.
 require_once __DIR__ . '/includes/functions.php';
 
 start_session();
@@ -9,18 +10,23 @@ $businessId = (int) ($_POST['business_id'] ?? ($_GET['business_id'] ?? 0));
 $adminLoggedIn = is_admin_user();
 $messages = [];
 
+// Provide the default values for a brand-new business location row.
 function partner_form_blank_location() {
     return [
         'location_id' => 0,
         'location_name' => '',
         'address' => '',
         'phone' => '',
+        'promo_code' => '',
+        'promo_details' => '',
         'capacity_per_hour' => 10,
         'has_reservations' => 1,
+        'checkin_enabled' => 1,
         'hours' => get_default_hours_rows(),
     ];
 }
 
+// Rebuild the form state from submitted values after validation errors.
 function build_partner_form_view($postData, $businessId = 0) {
     $postData = is_array($postData) ? $postData : [];
     $locations = normalize_partner_locations_input($postData['locations'] ?? [], $postData);
@@ -52,6 +58,7 @@ function build_partner_form_view($postData, $businessId = 0) {
     ];
 }
 
+// Render one location editor card, including reservation settings and opening hours.
 function render_partner_location_card($index, $location) {
     $location = is_array($location) ? $location : partner_form_blank_location();
     $hoursRows = is_array($location['hours'] ?? null) ? $location['hours'] : get_default_hours_rows();
@@ -95,6 +102,35 @@ function render_partner_location_card($index, $location) {
                     <input type="checkbox" name="locations[<?php echo (int) $index; ?>][has_reservations]" value="1"<?php echo !empty($location['has_reservations']) ? ' checked' : ''; ?>>
                     <span>Allow reservation requests at this location</span>
                 </label>
+            </div>
+        </div>
+
+        <div class="panel-card" style="padding:18px;margin-top:16px;">
+            <div class="dashboard-item-head">
+                <div>
+                    <h3 style="margin:0 0 6px;">QR promo and rewards</h3>
+                    <p class="mini-note" style="margin:0;">Where2Go will generate one QR code for this location after you save. Customers scan it in-store to unlock the promo code and collect the default 20 points plus 20 XP reward.</p>
+                </div>
+            </div>
+
+            <div class="grid-two">
+                <div class="field">
+                    <label for="location_promo_code_<?php echo (int) $index; ?>">Promo code</label>
+                    <input id="location_promo_code_<?php echo (int) $index; ?>" type="text" name="locations[<?php echo (int) $index; ?>][promo_code]" value="<?php echo htmlspecialchars((string) ($location['promo_code'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" placeholder="WELCOME20">
+                </div>
+                <div class="field">
+                    <span>QR check-ins</span>
+                    <label class="checkbox-row">
+                        <input type="checkbox" name="locations[<?php echo (int) $index; ?>][checkin_enabled]" value="1"<?php echo array_key_exists('checkin_enabled', $location) ? (!empty($location['checkin_enabled']) ? ' checked' : '') : ' checked'; ?>>
+                        <span>Allow customers to scan this location QR and earn rewards</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="field">
+                <label for="location_promo_details_<?php echo (int) $index; ?>">Promo details</label>
+                <textarea id="location_promo_details_<?php echo (int) $index; ?>" name="locations[<?php echo (int) $index; ?>][promo_details]" placeholder="Describe what the customer gets from this code or location scan"><?php echo htmlspecialchars((string) ($location['promo_details'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></textarea>
+                <p class="mini-note" style="margin:0;">Level 1 currently starts at 100 XP. The exact level table can be updated later without changing the partner form again.</p>
             </div>
         </div>
 
@@ -152,6 +188,7 @@ function render_partner_location_card($index, $location) {
     <?php
 }
 
+// Render one promotional offer card inside the partner business form.
 function render_partner_offer_card($index, $offer) {
     $offer = is_array($offer) ? $offer : [];
     ?>
@@ -206,6 +243,7 @@ if (($_GET['saved'] ?? '') === '1') {
     $messages[] = ['type' => 'success', 'text' => 'Your business details were saved successfully.'];
 }
 
+// Save the submitted business data or rebuild the form with an error message.
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $result = save_partner_business_submission($partnerId, $_POST, $businessId);
 
@@ -223,10 +261,11 @@ $locations = is_array($formData['locations'] ?? null) ? array_values($formData['
 $photoRows = array_map(function ($photo) {
     return trim((string) ($photo['image_url'] ?? ''));
 }, is_array($formData['photos'] ?? null) ? $formData['photos'] : []);
+$photoRows = array_slice($photoRows, 0, 6);
 $menuRows = is_array($formData['menus'] ?? null) ? array_values($formData['menus']) : [];
 $offerRows = is_array($formData['offers'] ?? null) ? array_values($formData['offers']) : [];
 
-while (count($photoRows) < 4) {
+while (count($photoRows) < 6) {
     $photoRows[] = '';
 }
 
@@ -270,6 +309,7 @@ $typeOptions = [
 <link rel="stylesheet" href="assets/css/partner-portal.css">
 </head>
 <body class="light-mode">
+<!-- Business form header with shortcuts back to the partner workspace. -->
 <header class="topbar">
     <div class="topbar-inner">
         <div class="topbar-left">
@@ -294,6 +334,7 @@ $typeOptions = [
 </header>
 
 <main class="main-inner">
+    <!-- Hero summary showing whether the business is new, editable, approved, or rejected. -->
     <section class="hero-panel">
         <span class="eyebrow"><i data-lucide="store"></i><?php echo $isEditing ? 'Edit business listing' : 'Create business listing'; ?></span>
         <h1><?php echo $isEditing ? 'Update your business details' : 'Add a business to Where2Go'; ?></h1>
@@ -322,9 +363,11 @@ $typeOptions = [
     </div>
     <?php endif; ?>
 
+    <!-- Main business form covering identity, locations, media, menus, and offers. -->
     <form action="partner-business-form.php<?php echo $businessId > 0 ? '?business_id=' . $businessId : ''; ?>" method="POST" class="form-grid" style="margin-top:24px;">
         <input type="hidden" name="business_id" value="<?php echo $businessId; ?>">
 
+        <!-- Basic business identity fields such as the name, type, website, and description. -->
         <section class="panel-card">
             <h2>Business identity</h2>
             <div class="grid-two">
@@ -374,6 +417,7 @@ $typeOptions = [
             </div>
         </section>
 
+        <!-- Location editor for branch-specific addresses, hours, and booking capacity. -->
         <section class="panel-card">
             <div class="section-row">
                 <div>
@@ -389,9 +433,10 @@ $typeOptions = [
             </div>
         </section>
 
+        <!-- Photo URL inputs that feed the public gallery on the business detail page. -->
         <section class="panel-card">
             <h2>Photos</h2>
-            <p class="section-copy">Add image URLs for the business page gallery. The first image becomes the main public photo.</p>
+            <p class="section-copy">Add up to 6 image URLs for the business page gallery. The first image becomes the main public photo.</p>
             <div class="stack-list">
                 <?php foreach ($photoRows as $index => $photoUrl): ?>
                 <div class="field">
@@ -402,6 +447,7 @@ $typeOptions = [
             </div>
         </section>
 
+        <!-- Menu links that give customers direct access to downloadable or hosted menus. -->
         <section class="panel-card">
             <h2>Menus</h2>
             <div class="stack-list">
@@ -422,6 +468,7 @@ $typeOptions = [
             </div>
         </section>
 
+        <!-- Offer editor for optional promotions that can surface across discovery pages. -->
         <section class="panel-card">
             <div class="section-row">
                 <div>
@@ -444,10 +491,12 @@ $typeOptions = [
     </form>
 </main>
 
+<!-- Hidden template used by JavaScript when the partner adds another location card. -->
 <template id="location-template">
     <?php render_partner_location_card('__INDEX__', partner_form_blank_location()); ?>
 </template>
 
+<!-- Hidden template used by JavaScript when the partner adds another offer card. -->
 <template id="offer-template">
     <?php render_partner_offer_card('__INDEX__', [
         'title' => '',
@@ -460,6 +509,7 @@ $typeOptions = [
 </template>
 
 <script>
+// Keep the shared account script initialized even though this page does not expose saved places.
 window.where2goPageData = <?php echo json_encode(['visitedPlaceIds' => []], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
 </script>
 <script src="assets/js/account.js"></script>

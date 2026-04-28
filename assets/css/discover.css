@@ -1,3 +1,4 @@
+/* Default light theme tokens for search results and place detail pages. */
 :root {
     color-scheme: light;
     --page-bg: radial-gradient(circle at top, rgba(242, 108, 28, 0.18), transparent 34%), linear-gradient(180deg, #fffaf5 0%, #ffffff 34%, #fff4ea 100%);
@@ -12,6 +13,7 @@
     --success: #1f8a56;
 }
 
+/* Dark theme overrides that activate when the visitor switches modes. */
 body.dark-mode {
     color-scheme: dark;
     --page-bg: radial-gradient(circle at top, rgba(242, 108, 28, 0.2), transparent 28%), linear-gradient(180deg, #100b08 0%, #17110d 36%, #090705 100%);
@@ -41,6 +43,7 @@ img { display: block; max-width: 100%; }
 button, input { font: inherit; }
 code { font-family: 'Plus Jakarta Sans', sans-serif; }
 
+/* Sticky header styles for search/detail navigation and account access. */
 .topbar {
     position: sticky;
     top: 0;
@@ -79,6 +82,12 @@ body.dark-mode .topbar { background: rgba(12, 8, 7, 0.8); }
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
+}
+
+.topbar-right {
+    margin-left: auto;
+    justify-content: flex-end;
+    flex: 1 1 auto;
 }
 
 .brand-link,
@@ -161,7 +170,11 @@ body.light-mode .logo {
     color: var(--success);
 }
 
-.profile-menu { position: relative; }
+.profile-menu {
+    position: relative;
+    margin-left: auto;
+    align-self: flex-start;
+}
 
 .profile-toggle {
     color: var(--text);
@@ -221,6 +234,7 @@ body.light-mode .logo {
 
 .main-inner { padding: 30px 0 46px; }
 
+/* Shared card surfaces used by search results, place details, reviews, and empty states. */
 .hero-panel,
 .results-shell,
 .map-shell,
@@ -696,6 +710,7 @@ body.dark-mode .gallery-thumb {
     overflow: hidden;
 }
 
+/* Responsive adjustments for stacked layouts on tablets and smaller laptops. */
 @media (max-width: 980px) {
     .results-layout,
     .detail-layout {
@@ -709,11 +724,20 @@ body.dark-mode .gallery-thumb {
 
 @media (max-width: 760px) {
     .topbar-inner,
-    .topbar-right,
     .status-row,
     .result-actions {
         align-items: flex-start;
         flex-direction: column;
+    }
+
+    .topbar-right {
+        width: 100%;
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .profile-menu {
+        align-self: flex-end;
     }
 
     .hero-panel {

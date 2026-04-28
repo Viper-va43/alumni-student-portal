@@ -14,6 +14,8 @@
     let galleryIndex = 0;
     let galleryTimer = null;
 
+    // Apply the saved light or dark theme and refresh the Lucide icons.
+
     function applyTheme(theme) {
         const isDark = theme === 'dark';
         body.classList.toggle('dark-mode', isDark);
@@ -22,6 +24,8 @@
         themeLabel.textContent = isDark ? 'Dark mode' : 'Light mode';
         lucide.createIcons();
     }
+
+    // Close any open profile dropdown before another menu interaction happens.
 
     function closeProfileMenus() {
         profileMenus.forEach((menu) => {
@@ -32,6 +36,8 @@
             }
         });
     }
+
+    // Wire the account avatar dropdown so it opens on click and closes outside the menu.
 
     function setupProfileMenus() {
         profileMenus.forEach((menu) => {
@@ -60,6 +66,8 @@
         });
     }
 
+    // Read the locally cached saved-place ids for quick UI hydration.
+
     function readStoredSavedIds() {
         if (!isLoggedIn) {
             return [];
@@ -74,6 +82,8 @@
         }
     }
 
+    // Persist the latest saved-place ids so reloads can repaint buttons immediately.
+
     function writeStoredSavedIds() {
         if (!isLoggedIn) {
             sessionStorage.removeItem(storedSavedKey);
@@ -82,6 +92,8 @@
 
         sessionStorage.setItem(storedSavedKey, JSON.stringify(Array.from(savedLookup)));
     }
+
+    // Combine server-provided ids with session storage into one save-state lookup.
 
     function hydrateSavedLookup() {
         savedLookup.clear();
@@ -101,6 +113,8 @@
         writeStoredSavedIds();
     }
 
+    // Replace the local save-state lookup after a successful save or remove request.
+
     function syncSavedLookup(nextVisitedIds) {
         savedLookup.clear();
 
@@ -112,6 +126,8 @@
 
         writeStoredSavedIds();
     }
+
+    // Update the detail-page save button according to login and saved state.
 
     function updateSaveButton() {
         if (!savePlaceButton) {
@@ -134,6 +150,8 @@
             : '<i data-lucide="bookmark-plus"></i>Save to profile';
         lucide.createIcons();
     }
+
+    // Send the save or remove request for the active place on the detail page.
 
     async function trackPlaceVisit() {
         if (!savePlaceButton) {
@@ -181,12 +199,16 @@
         }
     }
 
+    // Stop the automatic gallery rotation when the page is leaving or reset is needed.
+
     function stopGalleryAutoplay() {
         if (galleryTimer !== null) {
             window.clearInterval(galleryTimer);
             galleryTimer = null;
         }
     }
+
+    // Swap the main gallery image and keep the thumbnail strip in sync.
 
     function setGalleryImage(index) {
         if (!galleryMain || galleryThumbs.length === 0) {
@@ -211,6 +233,8 @@
         galleryIndex = nextIndex;
     }
 
+    // Start the timed gallery rotation when multiple photos are available.
+
     function startGalleryAutoplay() {
         stopGalleryAutoplay();
 
@@ -222,6 +246,8 @@
             setGalleryImage(galleryIndex + 1);
         }, 2000);
     }
+
+    // Initialize the place gallery thumbnails, main image, and autoplay behavior.
 
     function setupGalleryAutoplay() {
         if (!galleryMain || galleryThumbs.length === 0) {

@@ -1,3 +1,4 @@
+/* Default light theme tokens for the modern homepage experience. */
 :root {
     color-scheme: light;
     --page-bg: radial-gradient(circle at top, rgba(242, 108, 28, 0.2), transparent 30%), linear-gradient(180deg, #fffaf5 0%, #ffffff 30%, #fff3e8 100%);
@@ -18,6 +19,7 @@
     --success: #1f8a56;
 }
 
+/* Dark theme overrides that activate when the visitor switches modes. */
 body.dark-mode {
     color-scheme: dark;
     --page-bg: radial-gradient(circle at top, rgba(242, 108, 28, 0.22), transparent 28%), linear-gradient(180deg, #0d0907 0%, #15100d 38%, #080605 100%);
@@ -123,6 +125,7 @@ code {
     50% { transform: translateY(-8px); }
 }
 
+/* Sticky header styles for navigation, account access, and the theme toggle. */
 .topbar {
     position: sticky;
     top: 0;
@@ -157,6 +160,12 @@ body.dark-mode .topbar {
     align-items: center;
     gap: 14px;
     flex-wrap: wrap;
+}
+
+.topbar-right {
+    margin-left: auto;
+    justify-content: flex-end;
+    flex: 1 1 auto;
 }
 
 .brand-link,
@@ -221,6 +230,8 @@ body.dark-mode .topbar {
 
 .profile-menu {
     position: relative;
+    margin-left: auto;
+    align-self: flex-start;
 }
 
 .profile-toggle {
@@ -291,6 +302,7 @@ body.dark-mode .topbar {
     color: var(--accent);
 }
 
+/* Shared spacing for the homepage hero and the content sections beneath it. */
 .hero-section,
 .section {
     padding: 30px 0 0;
@@ -801,6 +813,7 @@ body.dark-mode .map-placeholder {
     margin: 14px 0 0;
 }
 
+/* Footer styles for the closing site links and contact information. */
 .footer {
     margin-top: 34px;
     background: var(--footer-bg);
@@ -876,6 +889,16 @@ body.light-mode .hero-logo {
 @media (max-width: 760px) {
     .topbar-inner {
         align-items: flex-start;
+    }
+
+    .topbar-right {
+        width: 100%;
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .profile-menu {
+        align-self: flex-end;
     }
 
     .hero-card {

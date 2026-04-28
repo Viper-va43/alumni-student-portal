@@ -15,6 +15,8 @@
     const storedSavedKey = 'where2go-saved-places';
     const isLoggedIn = Boolean(pageData.isLoggedIn);
 
+    // Apply the saved light or dark theme and refresh the Lucide icons.
+
     function applyTheme(theme) {
         const isDark = theme === 'dark';
         body.classList.toggle('dark-mode', isDark);
@@ -23,6 +25,8 @@
         themeLabel.textContent = isDark ? 'Dark mode' : 'Light mode';
         lucide.createIcons();
     }
+
+    // Show the homepage intro only once per browser session.
 
     function showIntro() {
         const hasSeenIntro = sessionStorage.getItem('where2go-home-intro') === 'seen';
@@ -38,6 +42,8 @@
         }, 1500);
     }
 
+    // Close any open profile dropdown before another menu interaction happens.
+
     function closeProfileMenus() {
         profileMenus.forEach((menu) => {
             const dropdown = menu.querySelector('[data-profile-dropdown]');
@@ -47,6 +53,8 @@
             }
         });
     }
+
+    // Wire the account avatar dropdown so it opens on click and closes outside the menu.
 
     function setupProfileMenus() {
         profileMenus.forEach((menu) => {
@@ -75,6 +83,8 @@
         });
     }
 
+    // Read the locally cached saved-place ids for quick UI hydration.
+
     function readStoredSavedIds() {
         if (!isLoggedIn) {
             return [];
@@ -89,6 +99,8 @@
         }
     }
 
+    // Persist the latest saved-place ids so reloads can repaint buttons immediately.
+
     function writeStoredSavedIds() {
         if (!isLoggedIn) {
             sessionStorage.removeItem(storedSavedKey);
@@ -97,6 +109,8 @@
 
         sessionStorage.setItem(storedSavedKey, JSON.stringify(Array.from(savedLookup)));
     }
+
+    // Combine server-provided ids with session storage into one save-state lookup.
 
     function hydrateSavedLookup() {
         savedLookup.clear();
@@ -116,6 +130,8 @@
         writeStoredSavedIds();
     }
 
+    // Replace the local save-state lookup after a successful save or remove request.
+
     function syncSavedLookup(nextVisitedIds) {
         savedLookup.clear();
 
@@ -128,11 +144,15 @@
         writeStoredSavedIds();
     }
 
+    // Refresh the homepage stat that shows how many places are saved to the profile.
+
     function updateVisitedCount() {
         if (visitedCount) {
             visitedCount.textContent = String(savedLookup.size);
         }
     }
+
+    // Update the homepage save button label according to login and saved state.
 
     function updateSaveButton(button, isSaved) {
         if (!button) {
@@ -148,6 +168,8 @@
         button.classList.toggle('is-saved', isSaved);
         button.textContent = isSaved ? 'Remove from profile' : 'Save to profile';
     }
+
+    // Send the save or remove request for a homepage place card.
 
     async function trackPlaceVisit(button) {
         const placeId = button.dataset.trackPlace || '';
@@ -191,6 +213,8 @@
             button.disabled = false;
         }
     }
+
+    // Redirect the visitor into the shared search page with an optional query.
 
     function goToSearch(query) {
         const normalized = (query || '').trim();

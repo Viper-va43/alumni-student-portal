@@ -1,4 +1,5 @@
 <?php
+// Load shared discovery helpers and gather the session-aware data needed for the homepage.
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/place_data.php';
 
@@ -20,6 +21,7 @@ $offerCount = count(array_filter($approvedPartnerPlaces, function ($place) {
     return !empty($place['has_offer']);
 }));
 
+// Render one place card with the save button metadata used by the homepage scripts.
 function render_home_place_card($place, $loggedIn, $visitedLookup) {
     $place = is_array($place) ? $place : [];
     $placeId = (string) ($place['id'] ?? '');
@@ -107,6 +109,7 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
 <link rel="stylesheet" href="assets/css/home.css">
 </head>
 <body class="light-mode">
+<!-- Intro overlay that appears once per session before the homepage becomes interactive. -->
 <div class="intro-screen" id="intro-screen" aria-hidden="true">
     <div class="intro-card">
         <img src="assets/images/where2go_transparent.png" alt="Where2Go logo" class="intro-logo">
@@ -115,6 +118,7 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
 </div>
 
 <div class="page-shell">
+    <!-- Sticky header with navigation, account access, and the light/dark mode toggle. -->
     <header class="topbar">
         <div class="topbar-inner">
             <div class="topbar-left">
@@ -169,6 +173,7 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
     </header>
 
     <main>
+        <!-- Hero area that introduces the local-first discovery model and global search shortcut. -->
         <section class="hero-section" id="home">
             <div class="section-inner">
                 <div class="hero-card">
@@ -221,6 +226,7 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
             </div>
         </section>
 
+        <!-- Category shortcuts that send visitors straight into filtered discovery results. -->
         <section class="section" id="explore">
             <div class="section-inner">
                 <div class="section-head">
@@ -241,6 +247,7 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
             </div>
         </section>
 
+        <!-- Highlight approved partner businesses that are already visible to customers. -->
         <section class="section" id="partners">
             <div class="section-inner">
                 <div class="section-head">
@@ -265,6 +272,7 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
             </div>
         </section>
 
+        <!-- Keep the original curated starter places available even before partner growth. -->
         <section class="section" id="places">
             <div class="section-inner">
                 <div class="section-head">
@@ -284,6 +292,7 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
         </section>
     </main>
 
+    <!-- Footer links visitors back into the core discovery and partner flows. -->
     <footer class="footer">
         <div class="footer-inner">
             <div class="footer-grid">
@@ -327,6 +336,7 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
 </div>
 
 <script>
+// Expose the saved-place and login state that the homepage JavaScript needs on load.
 window.where2goHomeData = <?php echo json_encode([
     'isLoggedIn' => $loggedIn,
     'visitedPlaceIds' => array_values($visitedPlaceIds),

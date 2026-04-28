@@ -1,5 +1,6 @@
 <?php
 
+// Return the built-in starter catalog that seeds discovery before partner data is added.
 function get_place_catalog() {
     return [
         [
@@ -155,6 +156,7 @@ function get_place_catalog() {
     ];
 }
 
+// Find one catalog place by its stable identifier.
 function get_place_by_id($placeId) {
     foreach (get_place_catalog() as $place) {
         if ($place['id'] === $placeId) {
@@ -165,6 +167,7 @@ function get_place_by_id($placeId) {
     return null;
 }
 
+// Resolve a saved list of place ids back into catalog records.
 function get_places_by_ids($placeIds) {
     $places = [];
 
@@ -179,6 +182,7 @@ function get_places_by_ids($placeIds) {
     return $places;
 }
 
+// Suggest new places by excluding anything the customer already saved.
 function get_suggested_places($visitedIds = [], $limit = 4) {
     $visitedLookup = array_flip($visitedIds);
     $suggestions = [];
@@ -192,6 +196,7 @@ function get_suggested_places($visitedIds = [], $limit = 4) {
     return array_slice($suggestions, 0, $limit);
 }
 
+// Shape a built-in catalog record so it matches the discovery and search UI contract.
 function normalize_catalog_place_for_discovery($place) {
     $place = is_array($place) ? $place : [];
     $address = trim(implode(', ', array_filter([
@@ -231,6 +236,7 @@ function normalize_catalog_place_for_discovery($place) {
     ];
 }
 
+// Shape an approved partner business so it can live beside the built-in catalog.
 function normalize_public_business_for_discovery($business) {
     $business = is_array($business) ? $business : [];
     $businessId = (int) ($business['business_id'] ?? 0);
@@ -282,6 +288,7 @@ function normalize_public_business_for_discovery($business) {
     ];
 }
 
+// Merge catalog places and approved partner businesses into one searchable discovery list.
 function get_discovery_places($query = '', $limit = null) {
     $places = [];
 

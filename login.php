@@ -1,11 +1,13 @@
 <?php
+// Load the shared auth helpers and open the customer database connection for sign-in.
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/config/database.php';
 
 start_session();
+$redirectTarget = get_safe_internal_redirect_target($_POST['redirect'] ?? ($_GET['redirect'] ?? ''), 'Home.php');
 
 if (is_logged_in()) {
-    header('Location: Home.php');
+    header('Location: ' . $redirectTarget);
     exit;
 }
 
@@ -18,6 +20,7 @@ $password = $_POST['Password'] ?? '';
 $registered = ($_GET['registered'] ?? '') === '1';
 $loggedOut = ($_GET['logged_out'] ?? '') === '1';
 
+// Validate the submitted customer credentials and create the session on success.
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($email === '' || $password === '') {
         $errors[] = 'Email and password are required.';
@@ -43,7 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 session_regenerate_id(true);
                 login_user($customer);
-                header('Location: Home.php');
+                header('Location: ' . $redirectTarget);
                 exit;
             }
         } catch (PDOException $e) {
@@ -64,6 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest"></script>
 <style>
+/* Default light theme tokens for the customer login page. */
 :root {
     color-scheme: light;
     --page-bg: radial-gradient(circle at top, rgba(242, 108, 28, 0.16), transparent 38%), linear-gradient(180deg, #fffaf5 0%, #ffffff 28%, #fff5ed 100%);
@@ -90,6 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     --success-border: rgba(40, 134, 85, 0.18);
 }
 
+/* Dark theme overrides that activate when the visitor switches modes. */
 body.dark-mode {
     color-scheme: dark;
     --page-bg: radial-gradient(circle at top, rgba(242, 108, 28, 0.22), transparent 32%), linear-gradient(180deg, #100b08 0%, #17100c 34%, #090705 100%);
@@ -142,6 +147,7 @@ img {
     min-height: 100vh;
 }
 
+/* Sticky header styles for the login page navigation and theme toggle. */
 .topbar {
     position: sticky;
     top: 0;
@@ -241,6 +247,7 @@ body.light-mode .logo {
     padding: 52px 0 72px;
 }
 
+/* Hero panel styles for the sign-in introduction and notices. */
 .hero-panel {
     overflow: hidden;
     border-radius: 32px;
@@ -457,6 +464,7 @@ input:focus {
 </head>
 <body class="light-mode">
 <div class="page-shell">
+    <!-- Header that keeps login connected to the main site and theme control. -->
     <header class="topbar">
         <div class="topbar-inner">
             <div class="brand-wrap">
@@ -472,18 +480,23 @@ input:focus {
 
             <div class="top-actions">
                 <a class="top-link" href="Home.php">Back to homepage</a>
-                <a class="top-link" href="register.php">Create account</a>
+                <a class="top-link" href="register.php<?php echo $redirectTarget !== 'Home.php' ? '?redirect=' . rawurlencode($redirectTarget) : ''; ?>">Create account</a>
                 <span class="top-cta">Login</span>
             </div>
         </div>
     </header>
 
     <main class="main-inner">
+        <!-- Intro panel explaining the customer sign-in flow and notices. -->
         <section class="hero-panel">
             <h1>Welcome back to Where2Go</h1>
             <p>Sign in with the same account you created on the registration page and keep the same light or dark theme while you explore what comes next for the platform.</p>
+            <?php if ($redirectTarget !== 'Home.php'): ?>
+            <p style="margin-top:12px;">After login, you will go straight back to the QR reward page you opened.</p>
+            <?php endif; ?>
         </section>
 
+        <!-- Form area that captures the customer's email and password. -->
         <section class="form-shell">
             <div class="form-card">
                 <h2 class="section-title">Login form</h2>
@@ -510,6 +523,7 @@ input:focus {
                 <?php endif; ?>
 
                 <form action="login.php" method="POST">
+                    <input type="hidden" name="redirect" value="<?php echo htmlspecialchars($redirectTarget, ENT_QUOTES, 'UTF-8'); ?>">
                     <div class="form-grid">
                         <div class="field">
                             <label for="email">Email</label>
@@ -524,11 +538,11 @@ input:focus {
 
                     <div class="actions">
                         <button class="button" type="submit">Sign in</button>
-                        <a class="button-secondary" href="register.php">Create account</a>
+                        <a class="button-secondary" href="register.php<?php echo $redirectTarget !== 'Home.php' ? '?redirect=' . rawurlencode($redirectTarget) : ''; ?>">Create account</a>
                     </div>
                 </form>
 
-                <p class="form-meta">Need a new account? <a class="inline-link" href="register.php">Open registration</a></p>
+                <p class="form-meta">Need a new account? <a class="inline-link" href="register.php<?php echo $redirectTarget !== 'Home.php' ? '?redirect=' . rawurlencode($redirectTarget) : ''; ?>">Open registration</a></p>
             </div>
 
             <aside class="info-card">
@@ -557,12 +571,14 @@ input:focus {
 </div>
 
 <script>
+// Shared theme controls for the standalone login page.
 const themeKey = 'where2go-theme';
 const body = document.body;
 const themeToggle = document.getElementById('theme-toggle');
 const themeIcon = document.getElementById('theme-icon');
 const themeLabel = document.getElementById('theme-label');
 
+// Apply the saved light or dark mode and refresh the page icons.
 function applyTheme(theme) {
     const isDark = theme === 'dark';
     body.classList.toggle('dark-mode', isDark);
