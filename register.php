@@ -38,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (!$conn) {
-        $errors[] = $database->lastError ?: 'Unable to connect to the Where2Go database.';
+        $errors[] = 'Registration is temporarily unavailable. Please try again soon.';
     }
 
     if (!$errors) {
@@ -51,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $errors[] = 'This email address is already registered.';
             }
         } catch (PDOException $e) {
-            $errors[] = 'The customer table is not ready yet. Please repair or re-import the Where2Go database tables in phpMyAdmin before testing registration.';
+            $errors[] = 'Registration is temporarily unavailable. Please try again soon.';
             error_log('Where2Go register lookup failed: ' . $e->getMessage());
         }
     }
@@ -94,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: ' . $loginRedirect);
             exit;
         } catch (PDOException $e) {
-            $errors[] = 'The form is working, but the Where2Go database could not save the account yet. Repair the tables in phpMyAdmin, then try again.';
+            $errors[] = 'Registration is temporarily unavailable. Please try again soon.';
             error_log('Where2Go register insert failed: ' . $e->getMessage());
         }
     }
@@ -533,9 +533,9 @@ select:focus {
         <!-- Intro panel explaining the customer registration flow. -->
         <section class="hero-panel">
             <h1>Create your Where2Go account</h1>
-            <p>The registration page follows the same light and dark theme system as the homepage, so the whole account flow feels connected while the `where2go` database keeps taking shape.</p>
+            <p>Create an account to save places, get suggestions, and manage your profile.</p>
             <?php if ($redirectTarget !== 'Home.php'): ?>
-            <p style="margin-top:12px;">After registration, you will be sent to login and then returned to the QR reward page you opened.</p>
+            <p style="margin-top:12px;">After registration, you will be sent to login and then returned to the page you opened.</p>
             <?php endif; ?>
         </section>
 
@@ -543,7 +543,7 @@ select:focus {
         <section class="form-shell">
             <div class="form-card">
                 <h2 class="section-title">Registration form</h2>
-                <p class="section-copy">This version keeps your existing fields, matches the homepage styling, and now sends successful signups straight to the homepage.</p>
+                <p class="section-copy">Add your details below to create your customer account.</p>
 
                 <?php if ($errors): ?>
                 <div class="notice">
@@ -619,23 +619,23 @@ select:focus {
             </div>
 
             <aside class="info-card">
-                <h3>What changed here</h3>
-                <p>The registration screen now uses the same brand logo, persistent theme preference, and softer branded surfaces as the homepage.</p>
+                <h3>Your account</h3>
+                <p>Use your profile to keep your favorite places and plans together.</p>
 
                 <div class="info-list">
                     <div class="info-item">
-                        <strong>Shared themes</strong>
-                        Your light or dark mode choice is saved in the browser and reused across both pages.
+                        <strong>Save places</strong>
+                        Keep a list of spots you want to visit.
                     </div>
 
                     <div class="info-item">
-                        <strong>Cleaner brand setup</strong>
-                        The header now uses the same Where2Go logo asset so replacing it later will be a one-file swap.
+                        <strong>Get suggestions</strong>
+                        Discover new ideas based on your saved list.
                     </div>
 
                     <div class="info-item">
-                        <strong>Database note</strong>
-                        If phpMyAdmin still shows broken customer tables, this page will keep showing a clear message instead of failing silently.
+                        <strong>Manage details</strong>
+                        Keep your profile information up to date.
                     </div>
                 </div>
             </aside>

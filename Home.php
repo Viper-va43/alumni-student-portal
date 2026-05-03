@@ -17,6 +17,48 @@ $approvedPartnerPlaces = array_map('normalize_public_business_for_discovery', ge
 $partnerHighlights = array_slice($approvedPartnerPlaces, 0, 6);
 $visitedPlaceIds = get_visited_place_ids();
 $visitedLookup = array_flip($visitedPlaceIds);
+$choosePlaces = array_values(array_merge($originalPlaces, $approvedPartnerPlaces));
+$chooseLocations = [
+    'Cairo',
+    'Giza',
+    'Downtown',
+    'Islamic Cairo',
+    'Coptic Cairo',
+    'Zamalek',
+    'Garden City',
+    'Heliopolis',
+    'Nasr City',
+    'Maadi',
+    'Mokattam',
+    'New Cairo',
+    '5th Settlement',
+    '1st Settlement',
+    'Al-Rehab',
+    'Madinaty',
+    'El Shorouk',
+    'Badr City',
+    'New Administrative Capital',
+    'Abdeen',
+    'Azbakeya',
+    'Boulaq',
+    'El-Mosky',
+    'Al-Wayli',
+    'El-Nozha',
+    'El-Matareya',
+    'El-Marg',
+    'Sayeda Zeinab',
+    'Helwan',
+    'Tura',
+    '15th of May',
+    'Dar El-Salam',
+    'Shubra',
+    'Rod El-Farag',
+    'Zeitoun',
+    'Hadayek El-Kobba',
+    'Al-Zawya Al-Hamra',
+    'El-Sharabiya',
+    'Manshiyat Naser',
+];
 $offerCount = count(array_filter($approvedPartnerPlaces, function ($place) {
     return !empty($place['has_offer']);
 }));
@@ -106,7 +148,7 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest"></script>
-<link rel="stylesheet" href="assets/css/home.css">
+<link rel="stylesheet" href="assets/css/home.css?v=20260502-catalog-dropdowns-2">
 </head>
 <body class="light-mode">
 <!-- Intro overlay that appears once per session before the homepage becomes interactive. -->
@@ -131,20 +173,20 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
                 </button>
             </div>
 
-            <nav class="topbar-right" aria-label="Main navigation">
+            <nav class="topbar-nav" aria-label="Main navigation">
                 <a class="nav-link is-active" href="Home.php#home">Home</a>
-                <a class="nav-link" href="Home.php#partners">Partners</a>
                 <a class="nav-link" href="Home.php#places">Places</a>
                 <a class="nav-link" href="search.php">Search</a>
                 <a class="nav-link" href="about.php">About</a>
                 <?php if ($adminLoggedIn): ?>
+                <a class="nav-link" href="Home.php#partners">Partners</a>
+                <a class="nav-link" href="admin/dashboard.php">Admin</a>
                 <a class="nav-link" href="admin/business-approvals.php">Approvals</a>
-                <?php endif; ?>
-                <?php if ($partnerLoggedIn): ?>
-                <a class="nav-link" href="partner-dashboard.php"><?php echo htmlspecialchars($partnerName !== '' ? $partnerName : 'Partner dashboard', ENT_QUOTES, 'UTF-8'); ?></a>
-                <?php else: ?>
                 <a class="nav-link" href="partner-login.php">Partner portal</a>
                 <?php endif; ?>
+            </nav>
+
+            <div class="topbar-account">
                 <?php if ($loggedIn): ?>
                 <div class="profile-menu" data-profile-menu>
                     <button class="profile-toggle" type="button" data-profile-toggle>
@@ -155,7 +197,7 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
                             <?php echo htmlspecialchars(strtoupper(substr($customerName !== '' ? $customerName : 'W', 0, 1)), ENT_QUOTES, 'UTF-8'); ?>
                             <?php endif; ?>
                         </span>
-                        <span><?php echo htmlspecialchars($customerName !== '' ? $customerName : 'My account', ENT_QUOTES, 'UTF-8'); ?></span>
+                        <span class="account-name"><?php echo htmlspecialchars($customerName !== '' ? $customerName : 'My account', ENT_QUOTES, 'UTF-8'); ?></span>
                         <i data-lucide="chevrons-up-down" class="menu-chevron"></i>
                     </button>
                     <div class="profile-dropdown" data-profile-dropdown>
@@ -168,7 +210,7 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
                 <a class="nav-link" href="login.php">Login</a>
                 <a class="nav-cta" href="register.php">Create account</a>
                 <?php endif; ?>
-            </nav>
+            </div>
         </div>
     </header>
 
@@ -179,40 +221,122 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
                 <div class="hero-card">
                     <div class="hero-grid">
                         <div>
-                            <span class="eyebrow"><i data-lucide="badge-check"></i>Local-first discovery platform</span>
-                            <h1 class="hero-title">Find the place faster, then let approved partners bring the new options in.</h1>
-                            <p class="hero-text">Where2Go now runs on the original 10 places we built together plus approved business submissions from real partners. No Google dependency, no outside search feed, and no business goes public until you approve it.</p>
+                            <span class="eyebrow"><i data-lucide="badge-check"></i>Cairo discovery</span>
+                            <h1 class="hero-title">Find the right place faster.</h1>
+                            <p class="hero-text">Search the Where2Go picks, browse local places, or answer a few quick questions and let the site choose a plan for you.</p>
                             <div class="hero-actions">
                                 <a class="hero-button primary" href="#places"><i data-lucide="compass"></i>Browse original picks</a>
                                 <a class="hero-button secondary" href="search.php"><i data-lucide="search"></i>Search local places</a>
-                                <a class="hero-button secondary" href="<?php echo htmlspecialchars($partnerLoggedIn ? 'partner-dashboard.php' : 'partner-register.php', ENT_QUOTES, 'UTF-8'); ?>"><i data-lucide="store"></i><?php echo htmlspecialchars($partnerLoggedIn ? 'Open partner dashboard' : 'Become a partner', ENT_QUOTES, 'UTF-8'); ?></a>
                             </div>
-                            <div class="hero-search">
-                                <i data-lucide="search" class="hero-search-icon"></i>
-                                <input id="search-input" type="text" placeholder="Search the original picks or approved partner businesses">
-                                <button id="search-button" type="button" aria-label="Search places"><i data-lucide="arrow-right"></i></button>
+                            <div class="hero-tools" id="choose">
+                                <div class="hero-search-stack">
+                                    <div class="hero-search">
+                                        <i data-lucide="search" class="hero-search-icon"></i>
+                                        <input id="search-input" type="text" placeholder="Search places">
+                                        <button id="search-button" type="button" aria-label="Search places"><i data-lucide="arrow-right"></i></button>
+                                    </div>
+                                    <div class="catalog-chooser" aria-label="Choose by catalog">
+                                        <span>Choose by catalog</span>
+                                        <select data-catalog-target="event" data-ui-select data-ui-select-icon="calendar-days" aria-label="Choose event">
+                                            <option value="">Event</option>
+                                            <option value="food">Food plan</option>
+                                            <option value="friends">Friends hangout</option>
+                                            <option value="family">Family outing</option>
+                                            <option value="date">Date plan</option>
+                                            <option value="active">Active day</option>
+                                            <option value="culture">Culture walk</option>
+                                            <option value="views">Views</option>
+                                        </select>
+                                        <select data-catalog-target="location" data-ui-select data-ui-select-icon="map-pin" aria-label="Choose location">
+                                            <option value="">Location</option>
+                                            <?php foreach ($chooseLocations as $location): ?>
+                                            <option value="<?php echo htmlspecialchars($location, ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($location, ENT_QUOTES, 'UTF-8'); ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                        <select data-catalog-target="price" data-ui-select data-ui-select-icon="wallet" aria-label="Choose price">
+                                            <option value="">Price</option>
+                                            <option value="100">50-100 EGP</option>
+                                            <option value="200">100-200 EGP</option>
+                                            <option value="300">200+ EGP</option>
+                                        </select>
+                                        <select data-catalog-target="activity" data-ui-select data-ui-select-icon="sparkles" aria-label="Choose activity">
+                                            <option value="">Activity</option>
+                                            <option value="restaurants">Restaurants</option>
+                                            <option value="cafes">Cafes</option>
+                                            <option value="activities">Activities</option>
+                                            <option value="entertainment">Entertainment</option>
+                                            <option value="nightlife">Nightlife</option>
+                                            <option value="heritage">Heritage & museums</option>
+                                        </select>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
                         <div class="hero-side">
-                            <div class="hero-logo-card">
-                                <img src="assets/images/where2go_transparent.png" alt="Where2Go logo" class="hero-logo">
-                                <p>Partner businesses stay in a pending queue until you approve them, so the public experience stays clean and trusted.</p>
-                            </div>
+                            <form class="chooser-form hero-chooser" data-choose-form>
+                                <label class="chooser-field">
+                                    <span>Party size</span>
+                                    <input type="number" min="1" max="30" value="2" data-party-size>
+                                </label>
+
+                                <label class="chooser-field">
+                                    <span>Price / person</span>
+                                    <input type="number" min="0" step="25" placeholder="EGP" data-budget>
+                                </label>
+
+                                <div class="chooser-field">
+                                    <span>Location</span>
+                                    <select data-current-location data-ui-select data-ui-select-icon="map-pin">
+                                        <?php foreach ($chooseLocations as $location): ?>
+                                        <option value="<?php echo htmlspecialchars($location, ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($location, ENT_QUOTES, 'UTF-8'); ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+
+                                <div class="chooser-field">
+                                    <span>Activity</span>
+                                    <select data-current-activity data-ui-select data-ui-select-icon="sparkles">
+                                        <option value="">Any activity</option>
+                                        <option value="restaurants">Restaurants</option>
+                                        <option value="cafes">Cafes</option>
+                                        <option value="activities">Activities</option>
+                                        <option value="entertainment">Entertainment</option>
+                                        <option value="nightlife">Nightlife</option>
+                                        <option value="heritage">Heritage & museums</option>
+                                    </select>
+                                </div>
+
+                                <div class="chooser-field">
+                                    <span>Event</span>
+                                    <select data-current-event data-ui-select data-ui-select-icon="calendar-days">
+                                        <option value="">Any event</option>
+                                        <option value="food">Food plan</option>
+                                        <option value="friends">Friends hangout</option>
+                                        <option value="family">Family outing</option>
+                                        <option value="date">Date plan</option>
+                                        <option value="active">Active day</option>
+                                        <option value="culture">Culture walk</option>
+                                        <option value="views">Views</option>
+                                    </select>
+                                </div>
+
+                                <button class="choose-submit" type="submit">
+                                    <i data-lucide="sparkles"></i>
+                                    Pick
+                                </button>
+                            </form>
+                            <div class="choose-result hero-choose-result is-empty" data-choose-result aria-live="polite" hidden></div>
                             <div class="hero-stat-card">
-                                <p>The homepage is now fully local: curated originals, approved partner businesses, and offers managed directly from your own dashboard flow.</p>
+                                <p>Fresh ideas for your next plan.</p>
                                 <div class="hero-stat-grid">
                                     <div class="hero-stat">
                                         <strong><?php echo count($originalPlaces); ?></strong>
                                         <span>Original picks</span>
                                     </div>
                                     <div class="hero-stat">
-                                        <strong><?php echo count($approvedPartnerPlaces); ?></strong>
-                                        <span>Approved partners</span>
-                                    </div>
-                                    <div class="hero-stat">
-                                        <strong><?php echo $offerCount; ?></strong>
-                                        <span>Live offers</span>
+                                        <strong><?php echo count($choosePlaces); ?></strong>
+                                        <span>Total choices</span>
                                     </div>
                                     <div class="hero-stat">
                                         <strong id="visited-count"><?php echo count($visitedPlaceIds); ?></strong>
@@ -233,7 +357,7 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
                     <div>
                         <span class="section-kicker"><i data-lucide="layers-3"></i>Explore by category</span>
                         <h2 class="section-title">Start with the mood, then narrow down.</h2>
-                        <p class="section-desc">These category shortcuts now search only the places stored inside Where2Go: the original 10 plus any approved partner business that belongs there.</p>
+                        <p class="section-desc">Browse restaurants, cafes, activities, entertainment, and local picks around Cairo.</p>
                     </div>
                 </div>
 
@@ -247,14 +371,15 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
             </div>
         </section>
 
+        <?php if ($adminLoggedIn): ?>
         <!-- Highlight approved partner businesses that are already visible to customers. -->
         <section class="section" id="partners">
             <div class="section-inner">
                 <div class="section-head">
                     <div>
                         <span class="section-kicker"><i data-lucide="store"></i>Approved partner businesses</span>
-                        <h2 class="section-title">Businesses only appear here after admin approval.</h2>
-                        <p class="section-desc">Partners can submit their place, menus, offers, hours, and reservation settings, but customers only see the listing after you validate it.</p>
+                        <h2 class="section-title">Partner businesses</h2>
+                        <p class="section-desc">Review the latest business listings and open the ones ready for the catalog.</p>
                     </div>
                 </div>
 
@@ -266,11 +391,12 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
                 </div>
                 <?php else: ?>
                 <div class="hero-stat-card">
-                    <p>No partner business is approved yet. The original 10 places still power discovery while you test the partner portal and approval workflow.</p>
+                    <p>No partner businesses are ready yet.</p>
                 </div>
                 <?php endif; ?>
             </div>
         </section>
+        <?php endif; ?>
 
         <!-- Keep the original curated starter places available even before partner growth. -->
         <section class="section" id="places">
@@ -279,7 +405,7 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
                     <div>
                         <span class="section-kicker"><i data-lucide="sparkles"></i>The original 10 places</span>
                         <h2 class="section-title">Your starting list stays right here.</h2>
-                        <p class="section-desc">These are the original places we added together. They remain the foundation of the homepage while approved partner businesses grow the catalog over time.</p>
+                        <p class="section-desc">Browse the original Where2Go picks and find a spot that fits your plans.</p>
                     </div>
                 </div>
 
@@ -298,14 +424,17 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
             <div class="footer-grid">
                 <div class="footer-card">
                     <img src="assets/images/where2go_transparent.png" alt="Where2Go logo" class="logo footer-logo">
-                    <p>Where2Go now keeps discovery inside your own platform: curated original places, approved partner businesses, and customer saves that stay connected to the profile flow.</p>
+                    <p>Discover curated places, partner businesses, and saved favorites around Cairo.</p>
                 </div>
                 <div class="footer-card">
                     <h4>Quick Links</h4>
                     <ul>
                         <li><a href="Home.php#home">Home</a></li>
-                        <li><a href="Home.php#partners">Partners</a></li>
                         <li><a href="Home.php#places">Original picks</a></li>
+                        <?php if ($adminLoggedIn): ?>
+                        <li><a href="Home.php#partners">Partners</a></li>
+                        <li><a href="admin/dashboard.php">Admin dashboard</a></li>
+                        <?php endif; ?>
                         <li><a href="search.php">Search</a></li>
                         <li><a href="about.php">About</a></li>
                     </ul>
@@ -319,6 +448,7 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
                         <li><a href="partner-dashboard.php">Dashboard</a></li>
                         <?php endif; ?>
                         <?php if ($adminLoggedIn): ?>
+                        <li><a href="admin/dashboard.php">Admin dashboard</a></li>
                         <li><a href="admin/business-approvals.php">Admin approvals</a></li>
                         <?php endif; ?>
                     </ul>
@@ -330,7 +460,7 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
                     <span>Cairo, Egypt</span>
                 </div>
             </div>
-            <div class="footer-bottom">Only approved partner businesses are public. Everything else stays pending until you review it.</div>
+            <div class="footer-bottom">Explore Cairo with Where2Go.</div>
         </div>
     </footer>
 </div>
@@ -340,8 +470,9 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
 window.where2goHomeData = <?php echo json_encode([
     'isLoggedIn' => $loggedIn,
     'visitedPlaceIds' => array_values($visitedPlaceIds),
+    'choosePlaces' => $choosePlaces,
 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
 </script>
-<script src="assets/js/home.js"></script>
+<script src="assets/js/home.js?v=20260502-catalog-dropdowns-2"></script>
 </body>
 </html>

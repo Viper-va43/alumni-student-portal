@@ -232,6 +232,13 @@ body.dark-mode .voucher-code {
     margin-top: 0;
 }
 
+.reward-form-grid .field > span {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 0.82rem;
+    font-weight: 800;
+}
+
 .reward-form-grid input[type="text"],
 .reward-form-grid input[type="number"],
 .reward-form-grid textarea,
@@ -247,6 +254,53 @@ body.dark-mode .voucher-code {
 .reward-form-grid textarea {
     min-height: 130px;
     resize: vertical;
+}
+
+.star-rating {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.star-rating-button {
+    width: 40px;
+    height: 40px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--panel-soft);
+    color: var(--muted);
+    cursor: pointer;
+    transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.star-rating-button svg,
+.star-rating-button svg * {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+    stroke: currentColor;
+}
+
+.star-rating-button:hover,
+.star-rating-button:focus-visible {
+    transform: translateY(-1px);
+    border-color: rgba(245, 179, 1, 0.46);
+    background: rgba(245, 179, 1, 0.13);
+    color: #f5b301;
+}
+
+.star-rating-button.is-selected {
+    border-color: rgba(245, 179, 1, 0.52);
+    background: rgba(245, 179, 1, 0.16);
+    color: #f5b301;
+}
+
+.star-rating-button:focus-visible {
+    outline: 3px solid rgba(245, 179, 1, 0.22);
+    outline-offset: 2px;
 }
 
 .reward-note {

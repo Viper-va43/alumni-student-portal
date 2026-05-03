@@ -6,6 +6,21 @@
     align-items: stretch;
 }
 
+.partner-hero-panel .profile-stats {
+    gap: 12px;
+    row-gap: 14px;
+    max-width: 760px;
+}
+
+.partner-hero-panel .status-badge {
+    min-height: 40px;
+}
+
+.partner-hero-panel .hero-actions {
+    margin-top: 22px;
+    gap: 12px;
+}
+
 .auth-card,
 .stat-card,
 .repeat-card,

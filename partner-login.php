@@ -49,7 +49,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest"></script>
-<link rel="stylesheet" href="assets/css/account.css">
+<link rel="stylesheet" href="assets/css/account.css?v=20260502-alignment-1">
 <link rel="stylesheet" href="assets/css/partner-portal.css">
 </head>
 <body class="light-mode">
@@ -80,7 +80,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     <section class="hero-panel">
         <span class="eyebrow"><i data-lucide="store"></i>Partner portal</span>
         <h1>Sign in to manage your listing</h1>
-        <p>Use your dedicated business-owner account to add businesses, update offers, adjust reservation capacity, and watch your approval status from one place.</p>
+        <p>Use your business-owner account to manage listings, offers, hours, and reservations.</p>
     </section>
 
     <!-- Two-column area with a dashboard preview and the actual login form. -->
@@ -90,16 +90,16 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             <h2>Inside the dashboard</h2>
             <div class="stack-list">
                 <div class="repeat-card">
-                    <strong>Business submissions</strong>
-                    <p>Create or edit your listing, then send it for admin approval automatically.</p>
+                    <strong>Business listings</strong>
+                    <p>Create and update the details customers need before visiting.</p>
                 </div>
                 <div class="repeat-card">
                     <strong>Reservation tracking</strong>
                     <p>See reservation totals, upcoming bookings, and how many customers clicked into your place.</p>
                 </div>
                 <div class="repeat-card">
-                    <strong>Approval visibility</strong>
-                    <p>Pending businesses stay private until the admin validates them for the public website.</p>
+                    <strong>Offers and menus</strong>
+                    <p>Keep your latest offers, menus, and location details organized.</p>
                 </div>
             </div>
         </div>

@@ -35,6 +35,8 @@ $businessCanBook = false;
 $reviewResult = null;
 $existingReview = null;
 $canReviewBusiness = false;
+$catalogReviews = [];
+$catalogReviewSummary = ['average_rating' => null, 'review_count' => 0];
 
 // Format stored opening or reservation times into a customer-friendly label.
 function format_display_time($time) {
@@ -199,7 +201,7 @@ if ($businessId > 0) {
     }
 
     if ($businessCanBook && $selectedLocationId > 0) {
-        $calendarDays = get_location_booking_calendar_days($selectedLocationId, date('Y-m-d'), 21, $selectedGuests);
+        $calendarDays = get_location_booking_calendar_days($selectedLocationId, date('Y-m-d'), 14, $selectedGuests);
     }
 
     if ($businessCanBook && $selectedDate !== '') {
@@ -235,6 +237,30 @@ if ($businessId > 0) {
     $pageSummary = (string) ($catalogPlace['description'] ?? 'Discover more on Where2Go.');
     $activePlaceId = (string) ($catalogPlace['id'] ?? '');
     $savePayload = [];
+
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'submit_catalog_review') {
+        if (!$loggedIn) {
+            $messages[] = ['type' => 'error', 'text' => 'Login with a customer account before leaving a review.'];
+        } else {
+            $reviewResult = submit_catalog_place_review(
+                $customerId,
+                $activePlaceId,
+                (int) ($_POST['review_rating'] ?? 5),
+                (string) ($_POST['review_comment'] ?? '')
+            );
+            $messages[] = [
+                'type' => !empty($reviewResult['ok']) ? 'success' : 'error',
+                'text' => (string) ($reviewResult['message'] ?? 'The review could not be saved right now.'),
+            ];
+        }
+    }
+
+    $catalogReviews = get_catalog_place_reviews($activePlaceId, 8);
+    $catalogReviewSummary = get_catalog_place_review_summary($activePlaceId);
+
+    if ($loggedIn) {
+        $existingReview = get_customer_review_for_catalog_place($customerId, $activePlaceId);
+    }
 } else {
     header('Location: search.php');
     exit;
@@ -253,8 +279,8 @@ $savePayloadJson = htmlspecialchars(json_encode($savePayload, JSON_UNESCAPED_SLA
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest"></script>
-<link rel="stylesheet" href="assets/css/discover.css">
-<link rel="stylesheet" href="assets/css/rewards.css">
+<link rel="stylesheet" href="assets/css/discover.css?v=20260502-reservation-layout-1">
+<link rel="stylesheet" href="assets/css/rewards.css?v=20260502-star-reviews-2">
 </head>
 <body class="light-mode">
 <!-- Place detail header with navigation, account access, and the theme toggle. -->
@@ -275,11 +301,9 @@ $savePayloadJson = htmlspecialchars(json_encode($savePayload, JSON_UNESCAPED_SLA
             <a class="nav-link" href="search.php">Search</a>
             <a class="nav-link is-active" href="#">Place</a>
             <?php if ($adminLoggedIn): ?>
+            <a class="nav-link" href="Home.php#partners">Partners</a>
+            <a class="nav-link" href="admin/dashboard.php">Admin</a>
             <a class="nav-link" href="admin/business-approvals.php">Approvals</a>
-            <?php endif; ?>
-            <?php if ($partnerLoggedIn): ?>
-            <a class="nav-link" href="partner-dashboard.php"><?php echo htmlspecialchars($partnerName !== '' ? $partnerName : 'Partner dashboard', ENT_QUOTES, 'UTF-8'); ?></a>
-            <?php else: ?>
             <a class="nav-link" href="partner-login.php">Partner portal</a>
             <?php endif; ?>
             <?php if ($loggedIn): ?>
@@ -390,7 +414,7 @@ $savePayloadJson = htmlspecialchars(json_encode($savePayload, JSON_UNESCAPED_SLA
                 <?php endif; ?>
 
                 <div class="detail-panel" style="margin-top:18px;">
-                    <h2 class="section-title" style="margin-top:0;"><?php echo $source === 'business' ? 'Customer reviews' : 'Why it made the original list'; ?></h2>
+                    <h2 class="section-title" style="margin-top:0;">Customer reviews</h2>
                     <div class="review-grid" id="reviews-grid">
                         <?php if ($source === 'business' && !empty($business['reviews'])): ?>
                         <?php foreach ($business['reviews'] as $review): ?>
@@ -404,38 +428,60 @@ $savePayloadJson = htmlspecialchars(json_encode($savePayload, JSON_UNESCAPED_SLA
                             <p><?php echo htmlspecialchars((string) ($review['comment'] ?? 'No comment shared yet.'), ENT_QUOTES, 'UTF-8'); ?></p>
                         </article>
                         <?php endforeach; ?>
+                        <?php elseif ($source === 'catalog' && !empty($catalogReviews)): ?>
+                        <?php foreach ($catalogReviews as $review): ?>
+                        <?php $reviewAuthor = trim((string) (($review['First_N'] ?? '') . ' ' . ($review['Last_N'] ?? ''))); ?>
+                        <article class="review-card">
+                            <h3><?php echo htmlspecialchars($reviewAuthor !== '' ? $reviewAuthor : 'Where2Go customer', ENT_QUOTES, 'UTF-8'); ?></h3>
+                            <div class="detail-meta" style="margin-bottom:10px;">
+                                <span class="meta-pill"><i data-lucide="star" style="width:14px;height:14px;"></i><?php echo (int) ($review['rating'] ?? 0); ?>/5</span>
+                                <span class="meta-pill"><i data-lucide="clock-3" style="width:14px;height:14px;"></i><?php echo htmlspecialchars(date('M j, Y', strtotime((string) ($review['created_at'] ?? 'now'))), ENT_QUOTES, 'UTF-8'); ?></span>
+                            </div>
+                            <p><?php echo htmlspecialchars((string) ($review['comment'] ?? 'No comment shared yet.'), ENT_QUOTES, 'UTF-8'); ?></p>
+                        </article>
+                        <?php endforeach; ?>
                         <?php else: ?>
-                        <div class="review-card"><p><?php echo htmlspecialchars($source === 'business' ? 'This business does not have public reviews yet.' : 'This place is one of the original Where2Go picks you added together for the platform launch.', ENT_QUOTES, 'UTF-8'); ?></p></div>
+                        <div class="review-card"><p><?php echo htmlspecialchars($source === 'business' ? 'This business does not have public reviews yet.' : 'This original place does not have customer reviews yet.', ENT_QUOTES, 'UTF-8'); ?></p></div>
                         <?php endif; ?>
                     </div>
 
                     <?php if ($source === 'business'): ?>
                     <div class="detail-panel" style="margin-top:18px;">
                         <h3 style="margin:0 0 12px;">Leave a review</h3>
-                        <p class="reward-note" style="margin:0 0 14px;">Your first review for this business earns 5 reward points. Later edits keep your review fresh without adding extra points.</p>
+                        <p class="reward-note" style="margin:0 0 14px;">Share a review after your reservation time has passed. Later edits keep your review fresh.</p>
 
                         <?php if (!$loggedIn): ?>
                         <div class="review-card">
-                            <p style="margin-top:0;">Login to share a review and collect your review bonus.</p>
+                            <p style="margin-top:0;">Login to share a review after your visit.</p>
                             <a class="secondary-btn" href="login.php?redirect=<?php echo rawurlencode('place.php?business_id=' . $businessId); ?>"><i data-lucide="log-in"></i>Login to review</a>
                         </div>
                         <?php elseif (!$canReviewBusiness && !$existingReview): ?>
                         <div class="review-card">
-                            <p style="margin:0;">Review rewards unlock after your first QR check-in at this business. Scan the in-store QR code once, then come back here to post your review.</p>
+                            <p style="margin:0;">Reviews unlock after your reservation time for this business has passed. Book a visit first, then come back here to share what stood out.</p>
                         </div>
                         <?php else: ?>
                         <form action="place.php?business_id=<?php echo $businessId; ?>" method="POST" class="reward-form-grid" style="margin-top:0;">
                             <input type="hidden" name="action" value="submit_review">
                             <div class="reward-form-grid two-up">
-                                <label class="field">
+                                <div class="field">
                                     <span>Rating</span>
-                                    <select name="review_rating">
-                                        <?php $selectedRating = (int) ($existingReview['rating'] ?? 5); ?>
-                                        <?php for ($ratingOption = 5; $ratingOption >= 1; $ratingOption--): ?>
-                                        <option value="<?php echo $ratingOption; ?>"<?php echo $selectedRating === $ratingOption ? ' selected' : ''; ?>><?php echo $ratingOption; ?>/5</option>
+                                    <?php $selectedRating = max(1, min(5, (int) ($existingReview['rating'] ?? 5))); ?>
+                                    <input type="hidden" name="review_rating" value="<?php echo $selectedRating; ?>" data-star-input>
+                                    <div class="star-rating" role="radiogroup" aria-label="Rating" data-star-rating>
+                                        <?php for ($ratingOption = 1; $ratingOption <= 5; $ratingOption++): ?>
+                                        <button
+                                            class="star-rating-button<?php echo $ratingOption <= $selectedRating ? ' is-selected' : ''; ?>"
+                                            type="button"
+                                            role="radio"
+                                            data-star-value="<?php echo $ratingOption; ?>"
+                                            aria-checked="<?php echo $ratingOption === $selectedRating ? 'true' : 'false'; ?>"
+                                            aria-label="<?php echo $ratingOption; ?> star<?php echo $ratingOption === 1 ? '' : 's'; ?>"
+                                        >
+                                            <i data-lucide="star"></i>
+                                        </button>
                                         <?php endfor; ?>
-                                    </select>
-                                </label>
+                                    </div>
+                                </div>
                                 <label class="field">
                                     <span>Location</span>
                                     <select name="review_location_id">
@@ -457,11 +503,55 @@ $savePayloadJson = htmlspecialchars(json_encode($savePayload, JSON_UNESCAPED_SLA
                         <?php endif; ?>
                     </div>
                     <?php endif; ?>
+
+                    <?php if ($source === 'catalog'): ?>
+                    <div class="detail-panel" style="margin-top:18px;">
+                        <h3 style="margin:0 0 12px;">Leave a review</h3>
+                        <p class="reward-note" style="margin:0 0 14px;">Share your own review for this original Where2Go place. You can edit it later.</p>
+
+                        <?php if (!$loggedIn): ?>
+                        <div class="review-card">
+                            <p style="margin-top:0;">Login to share a review for this place.</p>
+                            <a class="secondary-btn" href="login.php?redirect=<?php echo rawurlencode('place.php?catalog_id=' . $activePlaceId); ?>"><i data-lucide="log-in"></i>Login to review</a>
+                        </div>
+                        <?php else: ?>
+                        <form action="place.php?catalog_id=<?php echo rawurlencode($activePlaceId); ?>" method="POST" class="reward-form-grid" style="margin-top:0;">
+                            <input type="hidden" name="action" value="submit_catalog_review">
+                            <div class="field">
+                                <span>Rating</span>
+                                <?php $selectedRating = max(1, min(5, (int) ($existingReview['rating'] ?? 5))); ?>
+                                <input type="hidden" name="review_rating" value="<?php echo $selectedRating; ?>" data-star-input>
+                                <div class="star-rating" role="radiogroup" aria-label="Rating" data-star-rating>
+                                    <?php for ($ratingOption = 1; $ratingOption <= 5; $ratingOption++): ?>
+                                    <button
+                                        class="star-rating-button<?php echo $ratingOption <= $selectedRating ? ' is-selected' : ''; ?>"
+                                        type="button"
+                                        role="radio"
+                                        data-star-value="<?php echo $ratingOption; ?>"
+                                        aria-checked="<?php echo $ratingOption === $selectedRating ? 'true' : 'false'; ?>"
+                                        aria-label="<?php echo $ratingOption; ?> star<?php echo $ratingOption === 1 ? '' : 's'; ?>"
+                                    >
+                                        <i data-lucide="star"></i>
+                                    </button>
+                                    <?php endfor; ?>
+                                </div>
+                            </div>
+                            <label class="field">
+                                <span>Your review</span>
+                                <textarea name="review_comment" placeholder="Tell other customers what stood out about this place."><?php echo htmlspecialchars((string) ($existingReview['comment'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></textarea>
+                            </label>
+                            <div class="card-actions">
+                                <button class="primary-btn" type="submit"><i data-lucide="message-square-heart"></i><?php echo $existingReview ? 'Update review' : 'Post review'; ?></button>
+                            </div>
+                        </form>
+                        <?php endif; ?>
+                    </div>
+                    <?php endif; ?>
                 </div>
             </div>
 
             <aside class="detail-side">
-                <div class="detail-panel">
+                <div class="detail-panel detail-summary-panel">
                     <h2 class="section-title" style="margin-top:0;">Details</h2>
                     <div class="detail-meta" id="detail-meta">
                         <?php if ($source === 'business'): ?>
@@ -472,14 +562,15 @@ $savePayloadJson = htmlspecialchars(json_encode($savePayload, JSON_UNESCAPED_SLA
                         <?php endif; ?>
                         <?php else: ?>
                         <span class="meta-pill"><i data-lucide="layers-3" style="width:14px;height:14px;"></i><?php echo htmlspecialchars((string) ($catalogPlace['category'] ?? 'Place'), ENT_QUOTES, 'UTF-8'); ?></span>
+                        <span class="meta-pill"><i data-lucide="star" style="width:14px;height:14px;"></i><?php echo (int) ($catalogReviewSummary['review_count'] ?? 0) > 0 ? htmlspecialchars(number_format((float) ($catalogReviewSummary['average_rating'] ?? 0), 1) . ' (' . (int) $catalogReviewSummary['review_count'] . ')', ENT_QUOTES, 'UTF-8') : 'No reviews yet'; ?></span>
                         <span class="meta-pill"><i data-lucide="wallet" style="width:14px;height:14px;"></i><?php echo htmlspecialchars((string) ($catalogPlace['price_range'] ?? '$$'), ENT_QUOTES, 'UTF-8'); ?></span>
                         <?php if (!empty($catalogPlace['address'])): ?>
                         <span class="meta-pill"><i data-lucide="map-pin" style="width:14px;height:14px;"></i><?php echo htmlspecialchars((string) $catalogPlace['address'], ENT_QUOTES, 'UTF-8'); ?></span>
                         <?php endif; ?>
                         <?php endif; ?>
                     </div>
-                    <div class="contact-list" id="contact-list" style="margin-top:14px;">
-                        <?php if ($source === 'business'): ?>
+                    <?php if ($source === 'business'): ?>
+                    <div class="contact-list" id="contact-list">
                         <?php if (!empty($business['primary_location']['phone'])): ?>
                         <a href="tel:<?php echo htmlspecialchars((string) $business['primary_location']['phone'], ENT_QUOTES, 'UTF-8'); ?>"><i data-lucide="phone" style="width:16px;height:16px;"></i><?php echo htmlspecialchars((string) $business['primary_location']['phone'], ENT_QUOTES, 'UTF-8'); ?></a>
                         <?php endif; ?>
@@ -487,80 +578,38 @@ $savePayloadJson = htmlspecialchars(json_encode($savePayload, JSON_UNESCAPED_SLA
                         <a href="<?php echo htmlspecialchars((string) $business['website'], ENT_QUOTES, 'UTF-8'); ?>" target="_blank" rel="noopener noreferrer"><i data-lucide="globe" style="width:16px;height:16px;"></i>Visit website</a>
                         <?php endif; ?>
                         <span><i data-lucide="shield-check" style="width:16px;height:16px;"></i><?php echo htmlspecialchars(ucfirst((string) ($business['approval_status'] ?? 'pending')) . ' listing', ENT_QUOTES, 'UTF-8'); ?></span>
-                        <?php else: ?>
-                        <?php if (!empty($catalogPlace['address'])): ?>
-                        <span><i data-lucide="map-pin" style="width:16px;height:16px;"></i><?php echo htmlspecialchars((string) $catalogPlace['address'], ENT_QUOTES, 'UTF-8'); ?></span>
-                        <?php endif; ?>
-                        <span><i data-lucide="sparkles" style="width:16px;height:16px;"></i>Original Where2Go discovery pick</span>
-                        <?php endif; ?>
                     </div>
+                    <?php endif; ?>
                 </div>
 
-                <?php if ($source === 'business' && !empty($business['active_offers'])): ?>
-                <div class="detail-panel" style="margin-top:18px;">
-                    <h2 class="section-title" style="margin-top:0;">Active offers</h2>
-                    <div class="contact-list">
-                        <?php foreach ($business['active_offers'] as $offer): ?>
-                        <span><i data-lucide="ticket-percent" style="width:16px;height:16px;"></i><?php echo htmlspecialchars((string) ($offer['title'] ?? 'Offer'), ENT_QUOTES, 'UTF-8'); ?><?php echo !empty($offer['discount']) ? ' - ' . rtrim(rtrim((string) $offer['discount'], '0'), '.') . '%' : ''; ?></span>
-                        <?php endforeach; ?>
-                    </div>
-                </div>
-                <?php endif; ?>
-
-                <?php if ($source === 'business' && trim((string) ($business['rules'] ?? '')) !== ''): ?>
-                <div class="detail-panel" style="margin-top:18px;">
-                    <h2 class="section-title" style="margin-top:0;">Rules</h2>
-                    <p class="detail-copy"><?php echo nl2br(htmlspecialchars((string) $business['rules'], ENT_QUOTES, 'UTF-8')); ?></p>
-                </div>
-                <?php endif; ?>
-
-                <?php if ($source === 'business' && !empty($business['locations'])): ?>
-                <div class="detail-panel" style="margin-top:18px;">
-                    <h2 class="section-title" style="margin-top:0;">Locations</h2>
-                    <div class="contact-list" style="display:grid;gap:14px;">
-                        <?php foreach ($business['locations'] as $location): ?>
-                        <div style="padding:14px;border:1px solid var(--border);border-radius:22px;background:var(--panel-soft);">
-                            <strong style="display:block;margin-bottom:8px;"><?php echo htmlspecialchars(get_location_display_label($location), ENT_QUOTES, 'UTF-8'); ?></strong>
-                            <?php if (!empty($location['location_name']) && !empty($location['address'])): ?>
-                            <div class="result-subtitle" style="margin-bottom:8px;"><?php echo htmlspecialchars((string) $location['address'], ENT_QUOTES, 'UTF-8'); ?></div>
-                            <?php endif; ?>
-                            <?php if (!empty($location['phone'])): ?>
-                            <div class="result-subtitle" style="margin-bottom:8px;"><?php echo htmlspecialchars((string) $location['phone'], ENT_QUOTES, 'UTF-8'); ?></div>
-                            <?php endif; ?>
-                            <div class="detail-meta" style="margin-bottom:10px;">
-                                <span class="meta-pill"><i data-lucide="<?php echo (int) ($location['has_reservations'] ?? 0) === 1 ? 'calendar-check-2' : 'ban'; ?>" style="width:14px;height:14px;"></i><?php echo (int) ($location['has_reservations'] ?? 0) === 1 ? 'Reservations enabled' : 'Walk-in only'; ?></span>
-                            </div>
-                            <?php foreach (build_location_hours_summary($location['hours'] ?? []) as $line): ?>
-                            <div class="result-subtitle"><?php echo htmlspecialchars($line, ENT_QUOTES, 'UTF-8'); ?></div>
-                            <?php endforeach; ?>
+                <div class="detail-panel reservation-panel">
+                    <div class="reservation-heading">
+                        <span class="reservation-heading-icon"><i data-lucide="calendar-days"></i></span>
+                        <div>
+                            <h2 class="section-title">Reservation</h2>
+                            <p class="result-subtitle"><?php echo $source === 'business' && $selectedLocation && (int) ($selectedLocation['has_reservations'] ?? 0) === 1 ? 'Pick a date and time for your visit.' : 'Booking details appear here when this place accepts reservations.'; ?></p>
                         </div>
-                        <?php endforeach; ?>
                     </div>
-                </div>
-                <?php endif; ?>
 
-                <?php if ($source === 'business' && $selectedLocation && (int) ($selectedLocation['has_reservations'] ?? 0) === 1): ?>
-                <div class="detail-panel" style="margin-top:18px;">
-                    <h2 class="section-title" style="margin-top:0;">Reservation request</h2>
-                    <form action="place.php?business_id=<?php echo $businessId; ?>" method="GET" style="display:grid;gap:14px;">
+                    <?php if ($source === 'business' && $selectedLocation && (int) ($selectedLocation['has_reservations'] ?? 0) === 1): ?>
+                    <form action="place.php?business_id=<?php echo $businessId; ?>" method="GET" class="reservation-controls">
                         <input type="hidden" name="business_id" value="<?php echo $businessId; ?>">
                         <?php if ($selectedDate !== ''): ?>
                         <input type="hidden" name="reservation_date" value="<?php echo htmlspecialchars($selectedDate, ENT_QUOTES, 'UTF-8'); ?>">
                         <?php endif; ?>
-                        <label style="display:grid;gap:8px;">
+                        <label class="reservation-field">
                             <span>Location</span>
-                            <select name="location_id" style="padding:12px 14px;border-radius:16px;border:1px solid var(--border);background:var(--panel-strong);color:var(--text);">
+                            <select name="location_id">
                                 <?php foreach ($business['locations'] as $location): ?>
                                 <?php if ((int) ($location['has_reservations'] ?? 0) !== 1) { continue; } ?>
                                 <option value="<?php echo (int) $location['location_id']; ?>"<?php echo (int) $location['location_id'] === $selectedLocationId ? ' selected' : ''; ?>><?php echo htmlspecialchars(get_location_display_label($location), ENT_QUOTES, 'UTF-8'); ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </label>
-                        <label style="display:grid;gap:8px;">
+                        <label class="reservation-field">
                             <span>Guests</span>
-                            <input type="number" name="guests" min="1" max="<?php echo get_location_guest_limit($selectedLocation); ?>" value="<?php echo $selectedGuests; ?>" style="padding:12px 14px;border-radius:16px;border:1px solid var(--border);background:var(--panel-strong);color:var(--text);">
+                            <input type="number" name="guests" min="1" max="<?php echo get_location_guest_limit($selectedLocation); ?>" value="<?php echo $selectedGuests; ?>">
                         </label>
-                        <p class="result-subtitle" style="margin:0;">We arrange reservations in tables of up to 4 people. Choose your group size and then pick a highlighted day.</p>
                         <button class="secondary-btn" type="submit"><i data-lucide="calendar-search"></i>Refresh availability</button>
                     </form>
 
@@ -636,8 +685,57 @@ $savePayloadJson = htmlspecialchars(json_encode($savePayload, JSON_UNESCAPED_SLA
                         <?php endif; ?>
                     </div>
                     <?php endif; ?>
+                    <?php else: ?>
+                    <div class="reservation-unavailable">
+                        <i data-lucide="calendar-x"></i>
+                        <p>Reservations are not available for this place right now.</p>
+                    </div>
+                    <?php endif; ?>
+                </div>
+
+                <?php if ($source === 'business' && !empty($business['active_offers'])): ?>
+                <div class="detail-panel" style="margin-top:18px;">
+                    <h2 class="section-title" style="margin-top:0;">Active offers</h2>
+                    <div class="contact-list">
+                        <?php foreach ($business['active_offers'] as $offer): ?>
+                        <span><i data-lucide="ticket-percent" style="width:16px;height:16px;"></i><?php echo htmlspecialchars((string) ($offer['title'] ?? 'Offer'), ENT_QUOTES, 'UTF-8'); ?><?php echo !empty($offer['discount']) ? ' - ' . rtrim(rtrim((string) $offer['discount'], '0'), '.') . '%' : ''; ?></span>
+                        <?php endforeach; ?>
+                    </div>
                 </div>
                 <?php endif; ?>
+
+                <?php if ($source === 'business' && trim((string) ($business['rules'] ?? '')) !== ''): ?>
+                <div class="detail-panel" style="margin-top:18px;">
+                    <h2 class="section-title" style="margin-top:0;">Rules</h2>
+                    <p class="detail-copy"><?php echo nl2br(htmlspecialchars((string) $business['rules'], ENT_QUOTES, 'UTF-8')); ?></p>
+                </div>
+                <?php endif; ?>
+
+                <?php if ($source === 'business' && !empty($business['locations'])): ?>
+                <div class="detail-panel" style="margin-top:18px;">
+                    <h2 class="section-title" style="margin-top:0;">Locations</h2>
+                    <div class="contact-list" style="display:grid;gap:14px;">
+                        <?php foreach ($business['locations'] as $location): ?>
+                        <div style="padding:14px;border:1px solid var(--border);border-radius:22px;background:var(--panel-soft);">
+                            <strong style="display:block;margin-bottom:8px;"><?php echo htmlspecialchars(get_location_display_label($location), ENT_QUOTES, 'UTF-8'); ?></strong>
+                            <?php if (!empty($location['location_name']) && !empty($location['address'])): ?>
+                            <div class="result-subtitle" style="margin-bottom:8px;"><?php echo htmlspecialchars((string) $location['address'], ENT_QUOTES, 'UTF-8'); ?></div>
+                            <?php endif; ?>
+                            <?php if (!empty($location['phone'])): ?>
+                            <div class="result-subtitle" style="margin-bottom:8px;"><?php echo htmlspecialchars((string) $location['phone'], ENT_QUOTES, 'UTF-8'); ?></div>
+                            <?php endif; ?>
+                            <div class="detail-meta" style="margin-bottom:10px;">
+                                <span class="meta-pill"><i data-lucide="<?php echo (int) ($location['has_reservations'] ?? 0) === 1 ? 'calendar-check-2' : 'ban'; ?>" style="width:14px;height:14px;"></i><?php echo (int) ($location['has_reservations'] ?? 0) === 1 ? 'Reservations enabled' : 'Walk-in only'; ?></span>
+                            </div>
+                            <?php foreach (build_location_hours_summary($location['hours'] ?? []) as $line): ?>
+                            <div class="result-subtitle"><?php echo htmlspecialchars($line, ENT_QUOTES, 'UTF-8'); ?></div>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+                <?php endif; ?>
+
             </aside>
         </div>
     </section>
@@ -650,6 +748,6 @@ window.where2goPlaceData = <?php echo json_encode([
     'visitedPlaceIds' => array_values($visitedPlaceIds),
 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
 </script>
-<script src="assets/js/place-detail.js"></script>
+<script src="assets/js/place-detail.js?v=20260502-star-reservation-1"></script>
 </body>
 </html>

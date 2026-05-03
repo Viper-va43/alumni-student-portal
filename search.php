@@ -99,7 +99,7 @@ function render_search_result_card($place, $loggedIn, $visitedLookup) {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest"></script>
-<link rel="stylesheet" href="assets/css/discover.css">
+<link rel="stylesheet" href="assets/css/discover.css?v=20260502-reservation-layout-1">
 </head>
 <body class="light-mode">
 <!-- Search page header with navigation, account access, and the theme toggle. -->
@@ -120,11 +120,9 @@ function render_search_result_card($place, $loggedIn, $visitedLookup) {
             <a class="nav-link is-active" href="search.php<?php echo $query !== '' ? '?q=' . rawurlencode($query) : ''; ?>">Search</a>
             <a class="nav-link" href="about.php">About</a>
             <?php if ($adminLoggedIn): ?>
+            <a class="nav-link" href="Home.php#partners">Partners</a>
+            <a class="nav-link" href="admin/dashboard.php">Admin</a>
             <a class="nav-link" href="admin/business-approvals.php">Approvals</a>
-            <?php endif; ?>
-            <?php if ($partnerLoggedIn): ?>
-            <a class="nav-link" href="partner-dashboard.php"><?php echo htmlspecialchars($partnerName !== '' ? $partnerName : 'Partner dashboard', ENT_QUOTES, 'UTF-8'); ?></a>
-            <?php else: ?>
             <a class="nav-link" href="partner-login.php">Partner portal</a>
             <?php endif; ?>
             <?php if ($loggedIn): ?>
@@ -158,8 +156,8 @@ function render_search_result_card($place, $loggedIn, $visitedLookup) {
     <!-- Search hero that explains the local-only catalog and exposes quick filters. -->
     <section class="hero-panel">
         <span class="hero-chip"><i data-lucide="search"></i>Local-only search</span>
-        <h1 class="hero-title">Search the original picks and approved partner businesses</h1>
-        <p class="hero-copy">This page now searches only the places stored inside Where2Go. Partners appear here after approval, while the original 10 places remain part of every result set.</p>
+        <h1 class="hero-title">Search places around Cairo</h1>
+        <p class="hero-copy">Find restaurants, cafes, activities, entertainment, and local picks in one place.</p>
         <form class="search-form" action="search.php" method="GET">
             <i data-lucide="search" style="color:#8b6b57;"></i>
             <input id="search-input" type="text" name="q" value="<?php echo htmlspecialchars($query, ENT_QUOTES, 'UTF-8'); ?>" placeholder="Try restaurant, cafe, nightlife, entertainment, or a place name">
@@ -177,7 +175,7 @@ function render_search_result_card($place, $loggedIn, $visitedLookup) {
     <div class="status-row">
         <div>
             <h2 class="section-title" style="margin:0 0 6px;"><?php echo $query !== '' ? 'Results for "' . htmlspecialchars($query, ENT_QUOTES, 'UTF-8') . '"' : 'Browse all local places'; ?></h2>
-            <p class="section-copy" style="margin:0;"><?php echo count($searchResults); ?> results found. <?php echo $catalogCount; ?> original picks and <?php echo $businessCount; ?> approved partner businesses matched.</p>
+            <p class="section-copy" style="margin:0;"><?php echo count($searchResults); ?> results found.</p>
         </div>
         <span class="status-badge" id="results-status"><i data-lucide="badge-check"></i><?php echo count($searchResults); ?> places ready</span>
     </div>

@@ -1,6 +1,7 @@
 (function () {
     const pageData = window.where2goPlaceData || {};
     const body = document.body;
+    const topbar = document.querySelector('.topbar');
     const themeToggle = document.getElementById('theme-toggle');
     const themeIcon = document.getElementById('theme-icon');
     const themeLabel = document.getElementById('theme-label');
@@ -8,11 +9,14 @@
     const savePlaceButton = document.getElementById('save-place-button');
     const galleryMain = document.getElementById('gallery-main');
     const galleryThumbs = Array.from(document.querySelectorAll('#gallery-strip .gallery-thumb'));
+    const starRatings = Array.from(document.querySelectorAll('[data-star-rating]'));
     const savedLookup = new Set();
     const storedSavedKey = 'where2go-saved-places';
     const isLoggedIn = Boolean(pageData.isLoggedIn);
     let galleryIndex = 0;
     let galleryTimer = null;
+    let topbarCompact = false;
+    let topbarRaf = 0;
 
     // Apply the saved light or dark theme and refresh the Lucide icons.
 
@@ -23,6 +27,33 @@
         themeIcon.setAttribute('data-lucide', isDark ? 'moon-star' : 'sun-medium');
         themeLabel.textContent = isDark ? 'Dark mode' : 'Light mode';
         lucide.createIcons();
+    }
+
+    function updateTopbarState() {
+        if (!topbar) {
+            return;
+        }
+
+        const scrollTop = window.scrollY || document.documentElement.scrollTop || 0;
+
+        if (!topbarCompact && scrollTop >= 96) {
+            topbarCompact = true;
+        } else if (topbarCompact && scrollTop <= 20) {
+            topbarCompact = false;
+        }
+
+        topbar.classList.toggle('is-compact', topbarCompact);
+    }
+
+    function requestTopbarStateUpdate() {
+        if (topbarRaf) {
+            return;
+        }
+
+        topbarRaf = window.requestAnimationFrame(() => {
+            topbarRaf = 0;
+            updateTopbarState();
+        });
     }
 
     // Close any open profile dropdown before another menu interaction happens.
@@ -269,6 +300,63 @@
         window.addEventListener('beforeunload', stopGalleryAutoplay);
     }
 
+    function setStarRating(container, value) {
+        const input = container.parentElement ? container.parentElement.querySelector('[data-star-input]') : null;
+        const buttons = Array.from(container.querySelectorAll('[data-star-value]'));
+        const nextValue = Math.max(1, Math.min(5, Number.parseInt(value, 10) || 5));
+
+        if (input) {
+            input.value = String(nextValue);
+        }
+
+        buttons.forEach((button) => {
+            const buttonValue = Number.parseInt(button.dataset.starValue || '0', 10);
+            button.classList.toggle('is-selected', buttonValue <= nextValue);
+            button.setAttribute('aria-checked', buttonValue === nextValue ? 'true' : 'false');
+        });
+    }
+
+    function setupStarRatings() {
+        starRatings.forEach((container) => {
+            const input = container.parentElement ? container.parentElement.querySelector('[data-star-input]') : null;
+            const buttons = Array.from(container.querySelectorAll('[data-star-value]'));
+            const initialValue = input ? input.value : '5';
+
+            setStarRating(container, initialValue);
+
+            buttons.forEach((button) => {
+                button.addEventListener('click', () => {
+                    setStarRating(container, button.dataset.starValue || '5');
+                });
+
+                button.addEventListener('keydown', (event) => {
+                    const currentValue = input ? Number.parseInt(input.value || '5', 10) : 5;
+                    let nextValue = currentValue;
+
+                    if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
+                        nextValue = currentValue - 1;
+                    } else if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
+                        nextValue = currentValue + 1;
+                    } else if (event.key === 'Home') {
+                        nextValue = 1;
+                    } else if (event.key === 'End') {
+                        nextValue = 5;
+                    } else {
+                        return;
+                    }
+
+                    event.preventDefault();
+                    setStarRating(container, nextValue);
+                    const nextButton = container.querySelector(`[data-star-value="${Math.max(1, Math.min(5, nextValue))}"]`);
+
+                    if (nextButton) {
+                        nextButton.focus();
+                    }
+                });
+            });
+        });
+    }
+
     if (themeToggle) {
         themeToggle.addEventListener('click', () => {
             const nextTheme = body.classList.contains('dark-mode') ? 'light' : 'dark';
@@ -283,10 +371,14 @@
         });
     }
 
+    window.addEventListener('scroll', requestTopbarStateUpdate, { passive: true });
+
     hydrateSavedLookup();
     updateSaveButton();
     applyTheme(localStorage.getItem('where2go-theme') || 'light');
     setupProfileMenus();
     setupGalleryAutoplay();
+    setupStarRatings();
+    updateTopbarState();
     lucide.createIcons();
 })();

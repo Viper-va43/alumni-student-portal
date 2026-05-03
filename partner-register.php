@@ -68,7 +68,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest"></script>
-<link rel="stylesheet" href="assets/css/account.css">
+<link rel="stylesheet" href="assets/css/account.css?v=20260502-alignment-1">
 <link rel="stylesheet" href="assets/css/partner-portal.css">
 </head>
 <body class="light-mode">
@@ -109,22 +109,22 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             <div class="stack-list">
                 <div class="repeat-card">
                     <strong>1. Create your partner account</strong>
-                    <p>Use a dedicated business-owner email and password. This login stays separate from customer accounts.</p>
+                    <p>Use your business-owner email and password.</p>
                 </div>
                 <div class="repeat-card">
-                    <strong>2. Submit your business details</strong>
-                    <p>Add your type, rules, photos, menus, working hours, offers, and reservation settings from the dashboard.</p>
+                    <strong>2. Add your business details</strong>
+                    <p>Add your type, rules, photos, menus, working hours, offers, and reservation settings.</p>
                 </div>
                 <div class="repeat-card">
-                    <strong>3. Wait for admin approval</strong>
-                    <p>Your listing stays private and pending until the admin approves it for customers to see.</p>
+                    <strong>3. Manage from your dashboard</strong>
+                    <p>Keep your listing, offers, and reservations up to date.</p>
                 </div>
             </div>
         </div>
 
         <div class="auth-card">
             <h2>Register partner account</h2>
-            <p class="helper-text">This creates the owner login only. You will add the actual business listing after sign-in.</p>
+            <p class="helper-text">Create your owner login, then add your business details.</p>
 
             <?php if ($errors): ?>
             <div class="messages">

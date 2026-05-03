@@ -248,6 +248,9 @@ function ensure_where2go_rewards_schema() {
                 FOREIGN KEY (customer_id) REFERENCES customers (Customer_ID) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+    ensure_table_column($conn, 'business_reviews', 'updated_at', "ALTER TABLE business_reviews ADD COLUMN updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at");
+    ensure_table_index($conn, 'business_reviews', 'uniq_business_review_customer', "ALTER TABLE business_reviews ADD UNIQUE KEY uniq_business_review_customer (business_id, customer_id)");
+
     $conn->query("CREATE TABLE IF NOT EXISTS customer_rewards (
             customer_id INT PRIMARY KEY,
             total_points INT NOT NULL DEFAULT 0,
@@ -1815,6 +1818,48 @@ function has_customer_checked_in_business($customer_id, $business_id, $conn = nu
 
 
 /* -------------------------
+   CUSTOMER RESERVATION VISIT
+------------------------- */
+function has_customer_completed_business_reservation_for_review($customer_id, $business_id, $conn = null) {
+
+    $customer_id = (int) $customer_id;
+    $business_id = (int) $business_id;
+
+    if ($customer_id <= 0 || $business_id <= 0) {
+        return false;
+    }
+
+    if (!$conn) {
+        $conn = db_connect();
+    }
+
+    $sql = "SELECT bk.id
+            FROM bookings bk
+            INNER JOIN business_locations bl ON bl.location_id = bk.location_id
+            WHERE bk.customer_id = ?
+              AND bl.business_id = ?
+              AND bk.status IN ('pending', 'confirmed', 'completed')
+              AND (
+                  bk.date < CURDATE()
+                  OR (bk.date = CURDATE() AND bk.time_slot <= CURTIME())
+              )
+            LIMIT 1";
+    $stmt = $conn->prepare($sql);
+
+    if (!$stmt) {
+        return false;
+    }
+
+    $stmt->bind_param("ii", $customer_id, $business_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    return (bool) ($result && $result->fetch_assoc());
+
+}
+
+
+/* -------------------------
    REVIEW ELIGIBILITY
 ------------------------- */
 function can_customer_review_business($customer_id, $business_id) {
@@ -1826,13 +1871,8 @@ function can_customer_review_business($customer_id, $business_id) {
         return false;
     }
 
-    $settings = get_where2go_rewards_program_settings();
-
-    if ((int) ($settings['review_requires_checkin'] ?? 1) !== 1) {
-        return true;
-    }
-
-    return has_customer_checked_in_business($customer_id, $business_id);
+    return has_customer_completed_business_reservation_for_review($customer_id, $business_id)
+        || has_customer_checked_in_business($customer_id, $business_id);
 
 }
 
@@ -1873,11 +1913,10 @@ function submit_business_review($customer_id, $business_id, $location_id, $ratin
     }
 
     if (!can_customer_review_business($customer_id, $business_id)) {
-        return ['ok' => false, 'message' => 'Review rewards unlock after your first QR check-in at this business.'];
+        return ['ok' => false, 'message' => 'Reviews unlock after a reservation time for this business has passed.'];
     }
 
-    $settings = get_where2go_rewards_program_settings();
-    $reviewPoints = max(0, (int) ($settings['review_points'] ?? 5));
+    $reviewPoints = 0;
     $conn = db_connect();
 
     try {
@@ -1954,7 +1993,7 @@ function submit_business_review($customer_id, $business_id, $location_id, $ratin
             'ok' => true,
             'message' => $existingReview
                 ? 'Your review was updated.'
-                : 'Review posted. ' . ($awardedPoints > 0 ? 'You earned ' . $awardedPoints . ' points.' : 'Thanks for sharing your feedback.'),
+                : 'Review posted. Thanks for sharing your feedback.',
             'points_awarded' => $awardedPoints,
             'summary' => $summary,
             'unlocked_boxes' => $unlockedBoxes,

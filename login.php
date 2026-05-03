@@ -31,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (!$conn) {
-        $errors[] = $database->lastError ?: 'Unable to connect to the Where2Go database.';
+        $errors[] = 'Login is temporarily unavailable. Please try again soon.';
     }
 
     if (!$errors) {
@@ -50,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             }
         } catch (PDOException $e) {
-            $errors[] = 'The login form is ready, but the customer table still needs attention in phpMyAdmin before sign-in can work.';
+            $errors[] = 'Login is temporarily unavailable. Please try again soon.';
             error_log('Where2Go login failed: ' . $e->getMessage());
         }
     }
@@ -490,9 +490,9 @@ input:focus {
         <!-- Intro panel explaining the customer sign-in flow and notices. -->
         <section class="hero-panel">
             <h1>Welcome back to Where2Go</h1>
-            <p>Sign in with the same account you created on the registration page and keep the same light or dark theme while you explore what comes next for the platform.</p>
+            <p>Sign in to save places, manage your profile, and keep exploring Cairo.</p>
             <?php if ($redirectTarget !== 'Home.php'): ?>
-            <p style="margin-top:12px;">After login, you will go straight back to the QR reward page you opened.</p>
+            <p style="margin-top:12px;">After login, you will go straight back to the page you opened.</p>
             <?php endif; ?>
         </section>
 
@@ -500,7 +500,7 @@ input:focus {
         <section class="form-shell">
             <div class="form-card">
                 <h2 class="section-title">Login form</h2>
-                <p class="section-copy">Use the email and password saved in the `customers` table. The session is created after a successful sign-in and brought back to the homepage.</p>
+                <p class="section-copy">Use your email and password to continue.</p>
 
                 <?php if ($registered): ?>
                 <div class="notice notice-success">
@@ -546,23 +546,23 @@ input:focus {
             </div>
 
             <aside class="info-card">
-                <h3>What this login page does</h3>
-                <p>It matches the homepage and registration styling, checks the `customers` table in `where2go`, and starts a session for the user after a successful password check.</p>
+                <h3>Welcome back</h3>
+                <p>Your account keeps your saved places, suggestions, and reservations close by.</p>
 
                 <div class="info-list">
                     <div class="info-item">
-                        <strong>Shared theme</strong>
-                        The same light and dark mode preference is reused here so login does not feel like a separate app.
+                        <strong>Saved places</strong>
+                        Keep track of the places you want to visit.
                     </div>
 
                     <div class="info-item">
-                        <strong>Real authentication</strong>
-                        The password is verified against the hashed `Password` column stored in your customer records.
+                        <strong>Suggestions</strong>
+                        Get ideas based on what you already saved.
                     </div>
 
                     <div class="info-item">
-                        <strong>Database note</strong>
-                        If phpMyAdmin still shows broken customer tables, this page will show a clear message instead of failing silently.
+                        <strong>Reservations</strong>
+                        View your upcoming bookings from your profile.
                     </div>
                 </div>
             </aside>

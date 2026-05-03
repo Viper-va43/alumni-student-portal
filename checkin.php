@@ -97,7 +97,7 @@ $wheelSegmentsJson = htmlspecialchars(json_encode($wheelSegments, JSON_UNESCAPED
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest"></script>
-<link rel="stylesheet" href="assets/css/account.css">
+<link rel="stylesheet" href="assets/css/account.css?v=20260502-alignment-1">
 <link rel="stylesheet" href="assets/css/rewards.css">
 </head>
 <body class="light-mode">

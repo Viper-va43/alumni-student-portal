@@ -12,12 +12,7 @@ $customerName = trim($customer['First_N'] ?? ($_SESSION['customer_name'] ?? 'Tra
 $profilePhoto = get_profile_photo_web_path($customerId);
 $visitedPlaceIds = get_visited_place_ids();
 $visitedPlaces = get_visited_places(12);
-$rewardSummary = get_customer_rewards_summary($customerId);
-$recentCheckins = get_customer_recent_checkins($customerId, 5);
-$pendingBoxes = get_customer_pending_reward_boxes($customerId, 5);
-$activeRewards = get_customer_reward_vouchers($customerId, 8, false);
-$wheelSegments = build_reward_wheel_segments_for_user(db_connect(), $customerId);
-$wheelSegmentsJson = htmlspecialchars(json_encode($wheelSegments, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
+$customerBookings = get_customer_bookings($customerId);
 $memberSince = '';
 $messages = [];
 
@@ -79,8 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['profile_photo'])) {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest"></script>
-<link rel="stylesheet" href="assets/css/account.css">
-<link rel="stylesheet" href="assets/css/rewards.css">
+<link rel="stylesheet" href="assets/css/account.css?v=20260502-alignment-1">
 </head>
 <body class="light-mode">
 <!-- Profile header with quick links back to discovery and account actions. -->
@@ -127,13 +121,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['profile_photo'])) {
     <section class="hero-panel">
         <span class="eyebrow"><i data-lucide="user-round"></i>Your profile</span>
         <h1><?php echo htmlspecialchars($customerName, ENT_QUOTES, 'UTF-8'); ?>'s Where2Go space</h1>
-        <p>This is the account home for saved places, quick suggestions, your profile picture, and the rewards you collect whenever you scan a partner QR code in-store.</p>
+        <p>This is the account home for saved places, reservations, quick suggestions, and your profile picture.</p>
         <div class="profile-stats">
             <span class="status-badge is-success"><i data-lucide="bookmark-check"></i><?php echo count($visitedPlaceIds); ?> saved places</span>
-            <span class="status-badge"><i data-lucide="badge-check"></i>Level <?php echo (int) ($rewardSummary['current_level'] ?? 0); ?></span>
-            <span class="status-badge"><i data-lucide="coins"></i><?php echo (int) ($rewardSummary['total_points'] ?? 0); ?> points</span>
-            <span class="status-badge"><i data-lucide="flame"></i><?php echo (int) ($rewardSummary['streak'] ?? 0); ?> day streak</span>
-            <span class="status-badge"><i data-lucide="gift"></i><span data-pending-box-count><?php echo (int) ($rewardSummary['pending_reward_boxes'] ?? 0); ?></span> boxes</span>
+            <span class="status-badge"><i data-lucide="calendar-check-2"></i><?php echo count($customerBookings); ?> reservations</span>
             <span class="status-badge"><i data-lucide="calendar-days"></i><?php echo $memberSince !== '' ? 'Member since ' . htmlspecialchars($memberSince, ENT_QUOTES, 'UTF-8') : 'Where2Go member'; ?></span>
         </div>
         <div class="hero-actions">
@@ -166,47 +157,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['profile_photo'])) {
 
             <form action="profile.php" method="POST" enctype="multipart/form-data">
                 <div class="field">
-                    <label for="profile_photo">Choose image</label>
-                    <input id="profile_photo" type="file" name="profile_photo" accept=".jpg,.jpeg,.png,.webp">
+                    <span>Choose image</span>
+                    <input class="profile-file-input" id="profile_photo" type="file" name="profile_photo" accept=".jpg,.jpeg,.png,.webp" data-file-input data-file-name-target="profile-photo-name">
+                    <label class="file-picker" for="profile_photo">
+                        <span class="file-picker-icon"><i data-lucide="image-plus"></i></span>
+                        <span class="file-picker-copy">
+                            <strong>Pick profile photo</strong>
+                            <small id="profile-photo-name">JPG, PNG, or WEBP up to 3 MB</small>
+                        </span>
+                    </label>
                 </div>
                 <div class="card-actions" style="margin-top:16px;">
                     <button class="primary-btn" type="submit"><i data-lucide="upload"></i>Upload photo</button>
                 </div>
             </form>
-
-            <h3 style="margin-top:22px;">Rewards progress</h3>
-            <div class="detail-list">
-                <div class="detail-row">
-                    <strong>Current level</strong>
-                    <span>Level <?php echo (int) ($rewardSummary['current_level'] ?? 0); ?></span>
-                </div>
-                <div class="detail-row">
-                    <strong>Total points</strong>
-                    <span><?php echo (int) ($rewardSummary['total_points'] ?? 0); ?> points across <?php echo (int) ($rewardSummary['total_scans'] ?? 0); ?> scans</span>
-                </div>
-                <div class="detail-row">
-                    <strong>Daily check-ins</strong>
-                    <span><?php echo (int) ($rewardSummary['today_checkins'] ?? 0); ?> of <?php echo (int) ($rewardSummary['daily_place_limit'] ?? 5); ?> places used today</span>
-                </div>
-                <div class="detail-row">
-                    <strong>Streak</strong>
-                    <span><?php echo (int) ($rewardSummary['streak'] ?? 0); ?> days current, <?php echo (int) ($rewardSummary['longest_streak'] ?? 0); ?> days best</span>
-                </div>
-                <div class="detail-row">
-                    <strong>Next level</strong>
-                    <span><?php echo max(0, (int) (($rewardSummary['next_threshold'] ?? 0) - ($rewardSummary['total_points'] ?? 0))); ?> points remaining to reach level <?php echo (int) ($rewardSummary['next_level'] ?? ((int) ($rewardSummary['current_level'] ?? 0) + 1)); ?></span>
-                </div>
-                <div class="detail-row">
-                    <strong>Mystery boxes</strong>
-                    <span><span data-pending-box-count><?php echo (int) ($rewardSummary['pending_reward_boxes'] ?? 0); ?></span> pending, next unlock at level <?php echo (int) ($rewardSummary['next_mystery_box_level'] ?? 5); ?></span>
-                </div>
-            </div>
-            <div class="reward-progress" style="margin-top:18px;">
-                <div class="reward-progress-bar">
-                    <span class="reward-progress-fill" style="--progress-width:<?php echo (int) ($rewardSummary['progress_percent'] ?? 0); ?>%;"></span>
-                </div>
-                <p class="reward-note" style="margin:0;"><?php echo (int) ($rewardSummary['progress_percent'] ?? 0); ?>% toward level <?php echo (int) ($rewardSummary['next_level'] ?? 1); ?></p>
-            </div>
 
             <div class="detail-list">
                 <div class="detail-row">
@@ -219,7 +183,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['profile_photo'])) {
                 </div>
                 <div class="detail-row">
                     <strong>Location</strong>
-                    <span><?php echo htmlspecialchars($customer['Physical_Address'] ?? 'Add this later in phpMyAdmin if needed', ENT_QUOTES, 'UTF-8'); ?></span>
+                    <span><?php echo htmlspecialchars($customer['Physical_Address'] ?? 'Not added yet', ENT_QUOTES, 'UTF-8'); ?></span>
                 </div>
             </div>
         </aside>
@@ -228,8 +192,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['profile_photo'])) {
         <section class="panel-card">
             <div class="section-row">
                 <div>
-                    <h2 style="margin-bottom:8px;">Rewards, scans, and saved places</h2>
-                    <p class="section-copy">Pending mystery boxes, active vouchers, your latest QR scans, and your next saved spots all stay together here.</p>
+                    <h2 style="margin-bottom:8px;">Reservations and saved places</h2>
+                    <p class="section-copy">Your upcoming bookings and saved spots stay together here.</p>
                 </div>
                 <?php if (count($visitedPlaces) > 1): ?>
                 <div class="card-actions">
@@ -239,84 +203,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['profile_photo'])) {
                 <?php endif; ?>
             </div>
 
-            <h3 style="margin:0 0 10px;">Pending mystery boxes</h3>
-            <?php if ($pendingBoxes): ?>
-            <div class="reward-wheel-stack" style="margin-bottom:18px;">
-                <?php foreach ($pendingBoxes as $box): ?>
-                <?php
-                $boxLocationLabel = trim((string) ($box['location_name'] ?? '')) !== ''
-                    ? (string) $box['location_name']
-                    : (string) ($box['location_address'] ?? 'Business location');
-                ?>
-                <article class="reward-wheel-card" data-reward-wheel-card data-box-id="<?php echo (int) ($box['id'] ?? 0); ?>" data-spin-endpoint="spin-reward" data-segments="<?php echo $wheelSegmentsJson; ?>">
-                    <div class="reward-wheel-head">
-                        <div>
-                            <h3 style="margin:0 0 8px;">Level <?php echo (int) ($box['trigger_level'] ?? 0); ?> mystery box</h3>
-                            <p class="reward-note"><?php echo htmlspecialchars((string) ($box['business_name'] ?? 'Business'), ENT_QUOTES, 'UTF-8'); ?>, <?php echo htmlspecialchars($boxLocationLabel, ENT_QUOTES, 'UTF-8'); ?></p>
-                        </div>
-                        <span class="reward-pill"><i data-lucide="sparkles"></i>Ready now</span>
-                    </div>
-                    <div class="reward-wheel-stage">
-                        <div class="reward-wheel-pointer"></div>
-                        <div class="reward-wheel" data-reward-wheel></div>
-                        <div class="reward-wheel-center">Mystery Box</div>
-                    </div>
-                    <div class="reward-wheel-legend" data-wheel-legend></div>
-                    <div class="card-actions">
-                        <button class="primary-btn" type="button" data-spin-reward-button><i data-lucide="gift"></i>Open mystery box</button>
-                    </div>
-                    <div class="reward-wheel-status" data-wheel-status></div>
-                </article>
-                <?php endforeach; ?>
-            </div>
-            <?php else: ?>
-            <p class="section-copy" style="margin-top:0;">No pending mystery boxes right now. Keep scanning places and leaving reviews to unlock the next one.</p>
-            <?php endif; ?>
-
-            <h3 style="margin:0 0 10px;">Active vouchers</h3>
-            <?php if ($activeRewards): ?>
-            <div class="voucher-list" style="margin-bottom:18px;">
-                <?php foreach ($activeRewards as $reward): ?>
-                <?php
-                $rewardLocationLabel = trim((string) ($reward['location_name'] ?? '')) !== ''
-                    ? (string) $reward['location_name']
-                    : (string) ($reward['location_address'] ?? 'Business location');
-                ?>
-                <article class="voucher-card">
-                    <div class="voucher-card-head">
-                        <div>
-                            <strong><?php echo htmlspecialchars((string) ($reward['reward_label'] ?? ((int) ($reward['reward_value'] ?? 0) . '% OFF')), ENT_QUOTES, 'UTF-8'); ?></strong>
-                            <p class="reward-note"><?php echo htmlspecialchars((string) ($reward['business_name'] ?? 'Business'), ENT_QUOTES, 'UTF-8'); ?>, <?php echo htmlspecialchars($rewardLocationLabel, ENT_QUOTES, 'UTF-8'); ?></p>
-                        </div>
-                        <span class="voucher-code"><?php echo htmlspecialchars((string) ($reward['voucher_code'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></span>
-                    </div>
-                    <p class="reward-note" style="margin:0;">Expires <?php echo htmlspecialchars(date('M j, Y', strtotime((string) ($reward['expires_at'] ?? 'now'))), ENT_QUOTES, 'UTF-8'); ?></p>
-                </article>
-                <?php endforeach; ?>
-            </div>
-            <?php else: ?>
-            <p class="section-copy" style="margin-top:0;">No active vouchers yet. Your next wheel win will show up here automatically.</p>
-            <?php endif; ?>
-
-            <h3 style="margin:0 0 10px;">Recent reward check-ins</h3>
-            <?php if ($recentCheckins): ?>
+            <h3 style="margin:0 0 10px;">My reservations</h3>
+            <?php if ($customerBookings): ?>
             <div class="detail-list" style="margin-top:0;margin-bottom:18px;">
-                <?php foreach ($recentCheckins as $checkin): ?>
-                <?php
-                $checkinLocationLabel = trim((string) ($checkin['location_name'] ?? '')) !== ''
-                    ? (string) $checkin['location_name']
-                    : (string) ($checkin['location_address'] ?? 'Business location');
-                $promoLabel = trim((string) ($checkin['promo_code_snapshot'] ?? ''));
-                ?>
+                <?php foreach ($customerBookings as $booking): ?>
                 <div class="detail-row">
-                    <strong><?php echo htmlspecialchars(date('M j, Y', strtotime((string) ($checkin['checkin_date'] ?? 'now'))), ENT_QUOTES, 'UTF-8'); ?></strong>
-                    <span><?php echo htmlspecialchars((string) ($checkin['business_name'] ?? 'Business'), ENT_QUOTES, 'UTF-8'); ?>, <?php echo htmlspecialchars($checkinLocationLabel, ENT_QUOTES, 'UTF-8'); ?></span>
-                    <span><?php echo (int) ($checkin['points_awarded'] ?? 0); ?> points | <?php echo htmlspecialchars(str_replace('_', ' ', (string) ($checkin['scan_type'] ?? 'scan')), ENT_QUOTES, 'UTF-8'); ?><?php echo (int) ($checkin['streak_bonus_awarded'] ?? 0) > 0 ? ' | Streak bonus +' . (int) ($checkin['streak_bonus_awarded'] ?? 0) : ''; ?><?php echo $promoLabel !== '' ? ' | Promo: ' . htmlspecialchars($promoLabel, ENT_QUOTES, 'UTF-8') : ''; ?></span>
+                    <strong><?php echo htmlspecialchars((string) ($booking['business_name'] ?? 'Business'), ENT_QUOTES, 'UTF-8'); ?></strong>
+                    <span><?php echo htmlspecialchars(date('M j, Y', strtotime((string) ($booking['date'] ?? 'now'))) . ' at ' . date('g:i A', strtotime((string) ($booking['time_slot'] ?? 'now'))), ENT_QUOTES, 'UTF-8'); ?></span>
+                    <span><?php echo (int) ($booking['guests'] ?? 1); ?> guests - <?php echo htmlspecialchars(ucfirst((string) ($booking['status'] ?? 'pending')), ENT_QUOTES, 'UTF-8'); ?> - <?php echo htmlspecialchars((string) ($booking['location_address'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></span>
                 </div>
                 <?php endforeach; ?>
             </div>
             <?php else: ?>
-            <p class="section-copy" style="margin-top:0;">No QR reward scans yet. When you visit a partner location and scan its in-store QR code, your points, streak, and level progress will appear here.</p>
+            <p class="section-copy" style="margin-top:0;">No reservations yet. Open a partner place and pick an available time to book.</p>
             <?php endif; ?>
 
             <?php if ($visitedPlaces): ?>
@@ -379,7 +278,6 @@ window.where2goPageData = <?php echo json_encode([
     'visitedPlaceIds' => array_values($visitedPlaceIds),
 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
 </script>
-<script src="assets/js/account.js"></script>
-<script src="assets/js/rewards.js"></script>
+<script src="assets/js/account.js?v=20260502-file-picker-1"></script>
 </body>
 </html>

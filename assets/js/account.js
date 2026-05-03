@@ -1,14 +1,18 @@
 (function () {
     const pageData = window.where2goPageData || {};
     const body = document.body;
+    const topbar = document.querySelector('.topbar');
     const themeToggle = document.getElementById('theme-toggle');
     const themeIcon = document.getElementById('theme-icon');
     const themeLabel = document.getElementById('theme-label');
     const profileMenus = Array.from(document.querySelectorAll('[data-profile-menu]'));
     const saveButtons = Array.from(document.querySelectorAll('[data-track-place]'));
     const sliderButtons = Array.from(document.querySelectorAll('[data-slider-target]'));
+    const fileInputs = Array.from(document.querySelectorAll('[data-file-input]'));
     const savedLookup = new Set();
     const storedSavedKey = 'where2go-saved-places';
+    let topbarCompact = false;
+    let topbarRaf = 0;
 
     // Apply the saved light or dark theme and refresh the Lucide icons.
 
@@ -26,6 +30,33 @@
         }
 
         lucide.createIcons();
+    }
+
+    function updateTopbarState() {
+        if (!topbar) {
+            return;
+        }
+
+        const scrollTop = window.scrollY || document.documentElement.scrollTop || 0;
+
+        if (!topbarCompact && scrollTop >= 96) {
+            topbarCompact = true;
+        } else if (topbarCompact && scrollTop <= 20) {
+            topbarCompact = false;
+        }
+
+        topbar.classList.toggle('is-compact', topbarCompact);
+    }
+
+    function requestTopbarStateUpdate() {
+        if (topbarRaf) {
+            return;
+        }
+
+        topbarRaf = window.requestAnimationFrame(() => {
+            topbarRaf = 0;
+            updateTopbarState();
+        });
     }
 
     // Close any open profile dropdown before another menu interaction happens.
@@ -206,6 +237,21 @@
         });
     }
 
+    function setupFileInputs() {
+        fileInputs.forEach((input) => {
+            const label = document.getElementById(input.dataset.fileNameTarget || '');
+
+            if (!label) {
+                return;
+            }
+
+            input.addEventListener('change', () => {
+                const selectedFile = input.files && input.files.length > 0 ? input.files[0] : null;
+                label.textContent = selectedFile ? selectedFile.name : 'JPG, PNG, or WEBP up to 3 MB';
+            });
+        });
+    }
+
     if (themeToggle) {
         themeToggle.addEventListener('click', () => {
             const nextTheme = body.classList.contains('dark-mode') ? 'light' : 'dark';
@@ -214,10 +260,14 @@
         });
     }
 
+    window.addEventListener('scroll', requestTopbarStateUpdate, { passive: true });
+
     hydrateSavedLookup();
     applyTheme(localStorage.getItem('where2go-theme') || 'light');
     setupProfileMenus();
     setupSaveButtons();
     setupSliders();
+    setupFileInputs();
+    updateTopbarState();
     lucide.createIcons();
 })();

@@ -18,33 +18,53 @@ $loggedIn = is_logged_in();
 $customerName = trim($_SESSION['customer_name'] ?? '');
 
 if (!$conn) {
-    $dbNotice = $database->lastError ?: 'Unable to connect to the Where2Go database.';
+    $dbNotice = 'Places are being refreshed. Try again soon.';
 } else {
     try {
         if ($search !== '') {
-            $query = "SELECT Business_Name, Physical_Address
-                      FROM partners
-                      WHERE Business_Name LIKE :search
-                        AND Physical_Address LIKE :city
-                      ORDER BY Business_Name
+            $query = "SELECT b.name AS Business_Name,
+                             COALESCE(NULLIF(bl.address, ''), 'Address coming soon') AS Physical_Address
+                      FROM businesses b
+                      LEFT JOIN business_locations bl ON bl.location_id = (
+                          SELECT bl2.location_id
+                          FROM business_locations bl2
+                          WHERE bl2.business_id = b.business_id
+                          ORDER BY bl2.location_id ASC
+                          LIMIT 1
+                      )
+                      WHERE b.approval_status = 'approved'
+                        AND (
+                            b.name LIKE :search_name
+                            OR b.description LIKE :search_description
+                            OR bl.address LIKE :search_address
+                        )
+                      ORDER BY b.created_at DESC
                       LIMIT 8";
             $stmt = $conn->prepare($query);
-            $stmt->bindValue(':search', '%' . $search . '%', PDO::PARAM_STR);
-            $stmt->bindValue(':city', '%Cairo%', PDO::PARAM_STR);
+            $stmt->bindValue(':search_name', '%' . $search . '%', PDO::PARAM_STR);
+            $stmt->bindValue(':search_description', '%' . $search . '%', PDO::PARAM_STR);
+            $stmt->bindValue(':search_address', '%' . $search . '%', PDO::PARAM_STR);
         } else {
-            $query = "SELECT Business_Name, Physical_Address
-                      FROM partners
-                      WHERE Physical_Address LIKE :city
-                      ORDER BY Business_Name
+            $query = "SELECT b.name AS Business_Name,
+                             COALESCE(NULLIF(bl.address, ''), 'Address coming soon') AS Physical_Address
+                      FROM businesses b
+                      LEFT JOIN business_locations bl ON bl.location_id = (
+                          SELECT bl2.location_id
+                          FROM business_locations bl2
+                          WHERE bl2.business_id = b.business_id
+                          ORDER BY bl2.location_id ASC
+                          LIMIT 1
+                      )
+                      WHERE b.approval_status = 'approved'
+                      ORDER BY b.created_at DESC
                       LIMIT 8";
             $stmt = $conn->prepare($query);
-            $stmt->bindValue(':city', '%Cairo%', PDO::PARAM_STR);
         }
 
         $stmt->execute();
         $places = $stmt->fetchAll();
     } catch (PDOException $e) {
-        $dbNotice = 'The homepage is connected to MySQL, but the Where2Go tables still need repair or re-import in phpMyAdmin before live places can load.';
+        $dbNotice = 'Places are being refreshed. Try again soon.';
         error_log('Where2Go homepage query failed: ' . $e->getMessage());
     }
 }
@@ -817,7 +837,7 @@ body.light-mode .logo {
         <div class="topbar-inner">
             <div class="brand-wrap">
                 <a class="brand" href="#home" aria-label="Where2Go home">
-                    <img src="/where2go_transparent.png" alt="Where2Go logo" class="logo">
+                    <img src="assets/images/where2go_transparent.png" alt="Where2Go logo" class="logo">
                 </a>
 
                 <button class="theme-toggle" id="theme-toggle" type="button">
@@ -855,7 +875,7 @@ body.light-mode .logo {
                             </div>
 
                             <h1>Find the next place worth going to, faster.</h1>
-                            <p>Where2Go helps people discover trusted restaurants, entertainment, and hangout spots around Cairo. The intro is now more complete, the branding is in place, and the page can keep working even while the database is still being repaired.</p>
+                            <p>Where2Go helps people discover trusted restaurants, entertainment, activities, and hangout spots around Cairo.</p>
 
                             <form class="search-form" method="GET" action="index.php">
                                 <label class="search-field">
@@ -871,7 +891,7 @@ body.light-mode .logo {
                                     <i data-lucide="sparkles"></i>
                                     <div>
                                         <strong>You are signed in.</strong>
-                                        <span>Your session is active now, so the next step is building out the pages that use your account.</span>
+                                        <span>You can continue exploring and saving places.</span>
                                     </div>
                                 </div>
                                 <?php endif; ?>
@@ -890,8 +910,8 @@ body.light-mode .logo {
                                 <div class="notice notice-success">
                                     <i data-lucide="badge-check"></i>
                                     <div>
-                                        <strong>Registration is working.</strong>
-                                        <span>Your account was created. You can now continue to the login page and sign in with the email and password you just used.</span>
+                                        <strong>Account created.</strong>
+                                        <span>You can now sign in with the email and password you just used.</span>
                                     </div>
                                 </div>
                                 <?php endif; ?>
@@ -900,7 +920,7 @@ body.light-mode .logo {
                                 <div class="notice notice-warning">
                                     <i data-lucide="triangle-alert"></i>
                                     <div>
-                                        <strong>Database attention needed</strong>
+                                        <strong>Places are being refreshed</strong>
                                         <span><?php echo htmlspecialchars($dbNotice, ENT_QUOTES, 'UTF-8'); ?></span>
                                     </div>
                                 </div>
@@ -913,18 +933,18 @@ body.light-mode .logo {
                                 <div class="hero-logo-shell">
                                     <img class="hero-logo" src="assets/images/where2go-logo.svg" alt="Where2Go logo">
                                 </div>
-                                <p>A clearer first impression for the project: stronger branding, a session-based intro reveal, and one shared light/dark theme that registration can also follow.</p>
+                                <p>Find a place that fits the mood, the area, and the budget for your next plan.</p>
                             </div>
 
                             <div class="stat-row">
                                 <div class="stat-card">
-                                    <span class="stat-value">1 intro</span>
-                                    <p>Shown once per session so it feels intentional instead of repetitive.</p>
+                                    <span class="stat-value">Cairo</span>
+                                    <p>Local picks for meals, activities, views, and entertainment.</p>
                                 </div>
 
                                 <div class="stat-card">
-                                    <span class="stat-value">2 themes</span>
-                                    <p>Light and dark mode stay in sync across pages using saved browser preference.</p>
+                                    <span class="stat-value">Saved</span>
+                                    <p>Keep favorites close and return to them from your profile.</p>
                                 </div>
                             </div>
                         </aside>
@@ -940,7 +960,7 @@ body.light-mode .logo {
                     <div>
                         <h2>Explore by category</h2>
                     </div>
-                    <p class="section-copy">The homepage now has a more finished introduction while keeping the rest of the flow lightweight. These cards stay ready for the moment you start connecting real partner data.</p>
+                    <p class="section-copy">Start with a category, then narrow down by location, budget, or plan.</p>
                 </div>
 
                 <div class="category-grid">
@@ -953,19 +973,19 @@ body.light-mode .logo {
                     <article class="category-card">
                         <span class="icon-chip"><i data-lucide="gamepad-2"></i></span>
                         <h3>Activities</h3>
-                        <p>Surface places to go when people want something more interactive than a cafe.</p>
+                        <p>Find places to go when you want something more interactive.</p>
                     </article>
 
                     <article class="category-card">
                         <span class="icon-chip"><i data-lucide="tickets"></i></span>
                         <h3>Entertainment</h3>
-                        <p>Highlight cinemas, shows, and indoor experiences that fit different budgets.</p>
+                        <p>Find cinemas, shows, and indoor experiences that fit different budgets.</p>
                     </article>
 
                     <article class="category-card">
                         <span class="icon-chip"><i data-lucide="map"></i></span>
                         <h3>Discover Cairo</h3>
-                        <p>Keep the homepage focused on the city you are currently targeting in the database query.</p>
+                        <p>Explore neighborhoods, views, landmarks, and local favorites across Cairo.</p>
                     </article>
                 </div>
             </div>
@@ -978,7 +998,7 @@ body.light-mode .logo {
                     <div>
                         <h2>Popular places</h2>
                     </div>
-                    <p class="section-copy">This section still handles three states cleanly: live data, no matching rows, and broken tables. That way the design stays polished even when the schema still needs work.</p>
+                    <p class="section-copy">Browse nearby ideas and places worth trying.</p>
                 </div>
 
                 <?php if ($places): ?>
@@ -1003,7 +1023,7 @@ body.light-mode .logo {
                             </div>
                             <span class="pill">
                                 <i data-lucide="badge-info"></i>
-                                <span>Details page still needs to be built</span>
+                                <span>Open from search for more details</span>
                             </span>
                         </div>
                     </article>
@@ -1012,9 +1032,9 @@ body.light-mode .logo {
                 <?php else: ?>
                 <div class="empty-state">
                     <?php if ($dbNotice): ?>
-                    The homepage layout is ready, but the live partners table is not readable yet. Once the table is repaired or re-imported in phpMyAdmin, this section will populate automatically from MySQL.
+                    Places are being refreshed. Try again soon.
                     <?php else: ?>
-                    No Cairo places matched your current search. Add rows to the partners table or try a broader search term.
+                    No places matched your current search. Try a broader search term.
                     <?php endif; ?>
                 </div>
                 <?php endif; ?>
@@ -1026,21 +1046,21 @@ body.light-mode .logo {
             <div class="section-inner">
                 <div class="detail-grid">
                     <article class="detail-card">
-                        <span class="icon-chip"><i data-lucide="database"></i></span>
-                        <h3>Database status</h3>
-                        <p>The PHP app points at the `where2go` schema instead of the old alumni database, so the project is at least wired to the correct XAMPP target.</p>
+                        <span class="icon-chip"><i data-lucide="search"></i></span>
+                        <h3>Find faster</h3>
+                        <p>Search by place name, area, or the kind of outing you have in mind.</p>
                     </article>
 
                     <article class="detail-card">
                         <span class="icon-chip"><i data-lucide="shield-check"></i></span>
-                        <h3>Safer runtime behavior</h3>
-                        <p>Connection and query failures show as friendly notices while the real error details go to the PHP error log instead of appearing in the UI.</p>
+                        <h3>Plan easier</h3>
+                        <p>Compare places, prices, and locations before you decide where to go.</p>
                     </article>
 
                     <article class="detail-card">
                         <span class="icon-chip"><i data-lucide="palette"></i></span>
-                        <h3>Shared visual system</h3>
-                        <p>The logo, intro mood, and theme toggle now belong to the real site instead of living only in the earlier AI prototype.</p>
+                        <h3>Save favorites</h3>
+                        <p>Keep your favorite places in your profile so you can come back later.</p>
                     </article>
                 </div>
             </div>
@@ -1056,7 +1076,7 @@ body.light-mode .logo {
                         <div class="footer-logo-shell">
                             <img class="footer-logo" src="assets/images/where2go-logo.svg" alt="Where2Go logo">
                         </div>
-                        <p>Discover places worth trying in Cairo, then grow into partner pages, filters, reviews, and booking once the database is healthy again.</p>
+                        <p>Discover places worth trying in Cairo and keep your favorite plans close.</p>
                     </div>
 
                     <div class="footer-list">
@@ -1069,14 +1089,14 @@ body.light-mode .logo {
                     </div>
 
                     <div class="footer-list">
-                        <h4>Local setup notes</h4>
-                        <span>Server: XAMPP Apache + MySQL</span>
-                        <span>Schema: where2go</span>
-                        <span>Auth pages: login and registration are now live</span>
+                        <h4>Where2Go</h4>
+                        <span>Cairo, Egypt</span>
+                        <span>Restaurants, activities, and entertainment</span>
+                        <span>Saved places and suggestions</span>
                     </div>
                 </div>
 
-                <div class="footer-meta">Where2Go local prototype on XAMPP. Next milestone: repair or recreate the live MySQL tables so cards and registration can store real data.</div>
+                <div class="footer-meta">Explore Cairo with Where2Go.</div>
             </div>
         </div>
     </footer>

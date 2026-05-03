@@ -137,8 +137,8 @@ $selectedReviewedBusiness = $selectedReviewSummary ? get_business_by_id((int) ($
         <nav class="topbar-right" aria-label="Admin approvals navigation">
             <a class="nav-link" href="../Home.php">Home</a>
             <a class="nav-link" href="../search.php">Search</a>
+            <a class="nav-link" href="dashboard.php">Admin dashboard</a>
             <a class="nav-link" href="../partner-dashboard.php">Partner dashboard</a>
-            <a class="nav-link" href="reward-config.php">Reward config</a>
             <a class="primary-btn" href="../logout.php"><i data-lucide="log-out"></i>Logout</a>
         </nav>
     </div>

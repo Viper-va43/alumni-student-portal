@@ -1,6 +1,7 @@
 (function () {
     const pageData = window.where2goSearchData || {};
     const body = document.body;
+    const topbar = document.querySelector('.topbar');
     const themeToggle = document.getElementById('theme-toggle');
     const themeIcon = document.getElementById('theme-icon');
     const themeLabel = document.getElementById('theme-label');
@@ -20,6 +21,12 @@
         themeIcon.setAttribute('data-lucide', isDark ? 'moon-star' : 'sun-medium');
         themeLabel.textContent = isDark ? 'Dark mode' : 'Light mode';
         lucide.createIcons();
+    }
+
+    function updateTopbarState() {
+        if (topbar) {
+            topbar.classList.toggle('is-compact', window.scrollY > 32);
+        }
     }
 
     // Close any open profile dropdown before another menu interaction happens.
@@ -213,11 +220,14 @@
         });
     });
 
+    window.addEventListener('scroll', updateTopbarState, { passive: true });
+
     hydrateSavedLookup();
     saveButtons.forEach((button) => {
         updateSaveButton(button, savedLookup.has(button.dataset.savePlace));
     });
     applyTheme(localStorage.getItem('where2go-theme') || 'light');
     setupProfileMenus();
+    updateTopbarState();
     lucide.createIcons();
 })();

@@ -22,7 +22,7 @@ $suggestedPlaces = get_suggested_places($visitedPlaceIds, 6);
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest"></script>
-<link rel="stylesheet" href="assets/css/account.css">
+<link rel="stylesheet" href="assets/css/account.css?v=20260502-alignment-1">
 </head>
 <body class="light-mode">
 <!-- Suggestions header with profile access, navigation, and theme controls. -->
@@ -69,7 +69,7 @@ $suggestedPlaces = get_suggested_places($visitedPlaceIds, 6);
     <section class="hero-panel">
         <span class="eyebrow"><i data-lucide="sparkles"></i>Picked for you</span>
         <h1>Suggestions based on what you already saved</h1>
-        <p>Use this page through the account menu whenever you want fresh ideas. It stays close to your saved history and lets you add more places back into your profile in one click.</p>
+        <p>Find fresh ideas based on the places you already saved.</p>
         <div class="profile-stats">
             <span class="status-badge is-success"><i data-lucide="bookmark-check"></i><?php echo count($visitedPlaceIds); ?> places already in profile</span>
             <span class="status-badge"><i data-lucide="sparkles"></i><?php echo count($suggestedPlaces); ?> suggestions right now</span>
@@ -85,7 +85,7 @@ $suggestedPlaces = get_suggested_places($visitedPlaceIds, 6);
         <div class="section-row">
             <div>
                 <h2 style="margin-bottom:8px;">Recommended next spots</h2>
-                <p class="section-copy">These suggestions stay out of the places you already saved, so the page remains focused on new ideas instead of duplicates.</p>
+                <p class="section-copy">New ideas appear here when they are not already in your saved list.</p>
             </div>
         </div>
 
@@ -116,7 +116,7 @@ $suggestedPlaces = get_suggested_places($visitedPlaceIds, 6);
         <?php else: ?>
             <div class="empty-card">
                 <h3 style="margin-top:0;">You already covered every featured spot</h3>
-                <p>The current suggestion list is empty because your profile already contains all of the places available right now. More approved partner businesses will show up here as the catalog grows.</p>
+                <p>Your profile already contains the available featured spots. Check back later for more ideas.</p>
                 <div class="card-actions">
                     <a class="primary-btn" href="Home.php#places"><i data-lucide="compass"></i>Browse homepage places</a>
                 </div>

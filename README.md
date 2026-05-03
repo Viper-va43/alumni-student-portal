@@ -1,88 +1,47 @@
-# Where2Go Website for finding new places to hang out
+# Where2Go
 
-## 📋 Project Information
-- **Course:** Graduation Project 2 (GIS 402)
-- **Supervisor:** Dr. Hesham Elmasry
-- **Team Members:**
-  - Adham Yasser Nabil (20221665)
-  - Moataz Amr Zayan (20193677)
-  - Ibrahim mohamed Elfawal (20222758)
-  - Mohamed Ibrahim (20223335)
+Where2Go is a PHP and MySQL web app for discovering places, registering customers, onboarding partner businesses, booking visits, and issuing QR-based rewards.
 
----
+## Technology Stack
 
-## 🎯 Project Overview
-A website that helps people find new places to hang out and have fun.
+- Backend: PHP 8.x
+- Database: MySQL or MariaDB
+- Frontend: HTML, CSS, JavaScript
+- Local server: XAMPP Apache and MySQL
 
----
+## Project Structure
 
-## 💻 Technology Stack
-- **Backend:** PHP 8.x, MySQL
-- **Frontend:** HTML5, CSS, JavaScript
-- **Server:** Apache (XAMPP)
-- **Version Control:** Git & GitHub
-
----
-
-## 📁 Project Structure
+```text
 Where2Go/
+├── admin/
 ├── assets/
 ├── config/
+├── database/
 ├── includes/
 ├── pages/
-├── admin/
+├── Home.php
 └── index.php
+```
 
----
+## Local Setup
 
-## 🚀 Installation Instructions
+1. Clone or place the project in `C:\xampp\htdocs\Where2Go`.
+2. Start Apache and MySQL from XAMPP.
+3. Create a database named `where2go`.
+4. Copy `config/database.example.php` to `config/database.php` if `config/database.php` is missing.
+5. Update the database credentials in `config/database.php` only if your local MySQL user is not the default XAMPP `root` user with no password.
+6. Visit `http://localhost/Where2Go/Home.php`.
 
-### Prerequisites
-- XAMPP installed
-- Git installed
-- GitHub account
+## Useful Pages
 
-### Setup Steps
-1. Clone repository into `C:\xampp\htdocs\`
-2. Create database `alumni_portal`
-3. Configure `config/database.php`
-4. Start Apache & MySQL in XAMPP
-5. Visit `http://localhost/alumni-portal`
----
+- Customer home: `http://localhost/Where2Go/Home.php`
+- Legacy landing page: `http://localhost/Where2Go/index.php`
+- Customer login: `http://localhost/Where2Go/login.php`
+- Partner login: `http://localhost/Where2Go/partner-login.php`
+- Partner registration: `http://localhost/Where2Go/partner-register.php`
 
----
-## 🚀 Installation Instructions
+## Notes
 
-### Prerequisites
-- XAMPP installed
-- Git installed
-- GitHub account
-
-### Setup Steps
-1. Clone repository into `C:\xampp\htdocs\`
-2. Create database `Where2Go`
-3. Configure `config/database.php`
-4. Start Apache & MySQL in XAMPP
-5. Visit `http://localhost/Where2Go/home.php`
-
----
-
-## 🔧 Development Guidelines
-- Always pull before starting work: `git pull origin main`
-
-- Commit frequently with clear messages
-- Test code before pushing
-
----
-
-## 📅 Project Timeline
-- Week 1: Setup & Planning
-- Weeks 2–6: Backend Development
-- Weeks 4–7: Frontend Development
-- Weeks 8–9: Integration & Testing
-- Weeks 10–12: Final Documentation
-
----
-
-## 📄 License
-This project is created for educational purposes.
+- `config/database.php` is intentionally ignored by Git because it may contain local credentials.
+- The reward tables can be seeded with `database/reward-system-example-data.sql` after replacing the sample IDs with real customer, business, and location IDs.
+- Keep `config/maps.local.php` local if you add a Google Maps API key.

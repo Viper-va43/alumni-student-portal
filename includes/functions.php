@@ -202,20 +202,7 @@ function get_admin_user_emails() {
         return strtolower(trim((string) $email));
     }, $emails)));
 
-    if ($emails) {
-        $emails = array_values(array_unique($emails));
-        return $emails;
-    }
-
-    $conn = db_connect();
-    $result = $conn->query("SELECT Email FROM customers ORDER BY Customer_ID ASC LIMIT 1");
-    $row = $result ? $result->fetch_assoc() : null;
-
-    if ($row && !empty($row['Email'])) {
-        $emails[] = strtolower(trim((string) $row['Email']));
-    }
-
-    return $emails;
+    return $emails ? array_values(array_unique($emails)) : [];
 
 }
 

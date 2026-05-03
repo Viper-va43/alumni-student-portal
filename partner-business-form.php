@@ -21,7 +21,7 @@ function partner_form_blank_location() {
         'promo_details' => '',
         'capacity_per_hour' => 10,
         'has_reservations' => 1,
-        'checkin_enabled' => 1,
+        'checkin_enabled' => 0,
         'hours' => get_default_hours_rows(),
     ];
 }
@@ -105,34 +105,9 @@ function render_partner_location_card($index, $location) {
             </div>
         </div>
 
-        <div class="panel-card" style="padding:18px;margin-top:16px;">
-            <div class="dashboard-item-head">
-                <div>
-                    <h3 style="margin:0 0 6px;">QR promo and rewards</h3>
-                    <p class="mini-note" style="margin:0;">Where2Go will generate one QR code for this location after you save. Customers scan it in-store to unlock the promo code and collect the default 20 points plus 20 XP reward.</p>
-                </div>
-            </div>
-
-            <div class="grid-two">
-                <div class="field">
-                    <label for="location_promo_code_<?php echo (int) $index; ?>">Promo code</label>
-                    <input id="location_promo_code_<?php echo (int) $index; ?>" type="text" name="locations[<?php echo (int) $index; ?>][promo_code]" value="<?php echo htmlspecialchars((string) ($location['promo_code'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" placeholder="WELCOME20">
-                </div>
-                <div class="field">
-                    <span>QR check-ins</span>
-                    <label class="checkbox-row">
-                        <input type="checkbox" name="locations[<?php echo (int) $index; ?>][checkin_enabled]" value="1"<?php echo array_key_exists('checkin_enabled', $location) ? (!empty($location['checkin_enabled']) ? ' checked' : '') : ' checked'; ?>>
-                        <span>Allow customers to scan this location QR and earn rewards</span>
-                    </label>
-                </div>
-            </div>
-
-            <div class="field">
-                <label for="location_promo_details_<?php echo (int) $index; ?>">Promo details</label>
-                <textarea id="location_promo_details_<?php echo (int) $index; ?>" name="locations[<?php echo (int) $index; ?>][promo_details]" placeholder="Describe what the customer gets from this code or location scan"><?php echo htmlspecialchars((string) ($location['promo_details'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></textarea>
-                <p class="mini-note" style="margin:0;">Level 1 currently starts at 100 XP. The exact level table can be updated later without changing the partner form again.</p>
-            </div>
-        </div>
+        <input type="hidden" name="locations[<?php echo (int) $index; ?>][promo_code]" value="<?php echo htmlspecialchars((string) ($location['promo_code'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>">
+        <input type="hidden" name="locations[<?php echo (int) $index; ?>][promo_details]" value="<?php echo htmlspecialchars((string) ($location['promo_details'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>">
+        <input type="hidden" name="locations[<?php echo (int) $index; ?>][checkin_enabled]" value="0">
 
         <div class="panel-card" style="padding:18px;">
             <div class="dashboard-item-head">
@@ -305,7 +280,7 @@ $typeOptions = [
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest"></script>
-<link rel="stylesheet" href="assets/css/account.css">
+<link rel="stylesheet" href="assets/css/account.css?v=20260502-alignment-1">
 <link rel="stylesheet" href="assets/css/partner-portal.css">
 </head>
 <body class="light-mode">
@@ -338,7 +313,7 @@ $typeOptions = [
     <section class="hero-panel">
         <span class="eyebrow"><i data-lucide="store"></i><?php echo $isEditing ? 'Edit business listing' : 'Create business listing'; ?></span>
         <h1><?php echo $isEditing ? 'Update your business details' : 'Add a business to Where2Go'; ?></h1>
-        <p><?php echo $businessStatus === 'approved' ? 'Approved listings stay live while you update them from the dashboard.' : 'New and resubmitted listings stay private until the admin approves them.'; ?></p>
+        <p><?php echo $businessStatus === 'approved' ? 'Keep your listing details, locations, menus, offers, and reservations up to date.' : 'Add the details customers need before visiting your business.'; ?></p>
         <div class="profile-stats">
             <span class="status-pill <?php echo htmlspecialchars($businessStatus, ENT_QUOTES, 'UTF-8'); ?>">
                 <i data-lucide="<?php echo $businessStatus === 'approved' ? 'badge-check' : ($businessStatus === 'rejected' ? 'x-circle' : 'clock-3'); ?>"></i>
