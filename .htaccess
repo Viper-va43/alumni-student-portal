@@ -1,6 +1,25 @@
 # Prefer the application home pages when Apache resolves the folder root.
 DirectoryIndex Home.php index.php
 
+Options -Indexes
+
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/avif "access plus 30 days"
+    ExpiresByType image/gif "access plus 30 days"
+    ExpiresByType image/jpeg "access plus 30 days"
+    ExpiresByType image/png "access plus 30 days"
+    ExpiresByType image/webp "access plus 30 days"
+    ExpiresByType text/css "access plus 7 days"
+    ExpiresByType application/javascript "access plus 7 days"
+</IfModule>
+
+<IfModule mod_headers.c>
+    <FilesMatch "\.(avif|gif|jpe?g|jfif|png|webp|css|js)$">
+        Header set Cache-Control "public, max-age=604800"
+    </FilesMatch>
+</IfModule>
+
 RewriteEngine On
 
 RewriteRule ^scan/?$ api-scan.php [L,QSA]

@@ -8,6 +8,17 @@ require_partner_login();
 $partnerId = (int) ($_SESSION['partner_id'] ?? 0);
 $messages = [];
 
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'update_reservation_status') {
+    $bookingId = (int) ($_POST['booking_id'] ?? 0);
+    $reservationStatus = trim((string) ($_POST['status'] ?? ''));
+    $result = update_partner_booking_status($partnerId, $bookingId, $reservationStatus);
+
+    $messages[] = [
+        'type' => !empty($result['ok']) ? 'success' : 'error',
+        'text' => (string) ($result['message'] ?? 'The reservation could not be updated right now.'),
+    ];
+}
+
 $partner = get_partner_by_id($partnerId) ?: [];
 $partnerName = trim((string) ($partner['owner_name'] ?? ($_SESSION['partner_name'] ?? 'Partner')));
 $summary = get_partner_dashboard_summary($partnerId);
@@ -37,7 +48,9 @@ function partner_dashboard_time_label($time) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Manage Where2Go partner businesses, approval status, reservations, QR codes, and business details.">
 <title>Where2Go | Partner Dashboard</title>
+<link rel="icon" type="image/png" href="assets/images/where2go_transparent_clean.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
@@ -45,17 +58,17 @@ function partner_dashboard_time_label($time) {
 <link rel="stylesheet" href="assets/css/account.css?v=20260502-alignment-1">
 <link rel="stylesheet" href="assets/css/partner-portal.css">
 </head>
-<body class="light-mode">
+<body class="dark-mode">
 <!-- Partner dashboard header with shortcuts to business management and sign-out. -->
 <header class="topbar">
     <div class="topbar-inner">
         <div class="topbar-left">
             <a class="brand-link" href="Home.php" aria-label="Where2Go home">
-                <img src="assets/images/where2go_transparent.png" alt="Where2Go logo" class="logo">
+                <img src="assets/images/where2go_transparent_clean.png" alt="Where2Go logo" class="logo">
             </a>
             <button class="theme-toggle" id="theme-toggle" type="button">
-                <i data-lucide="sun-medium" id="theme-icon"></i>
-                <span id="theme-label">Light mode</span>
+                <i data-lucide="moon-star" id="theme-icon"></i>
+                <span id="theme-label">Dark mode</span>
             </button>
         </div>
 
@@ -192,8 +205,15 @@ function partner_dashboard_time_label($time) {
             <?php if ($upcomingReservations): ?>
             <div class="stack-list">
                 <?php foreach ($upcomingReservations as $reservation): ?>
+                <?php $reservationStatus = trim((string) ($reservation['status'] ?? 'pending')); ?>
                 <div class="repeat-card">
-                    <strong><?php echo htmlspecialchars((string) ($reservation['business_name'] ?? 'Business'), ENT_QUOTES, 'UTF-8'); ?></strong>
+                    <div class="dashboard-item-head">
+                        <strong><?php echo htmlspecialchars((string) ($reservation['business_name'] ?? 'Business'), ENT_QUOTES, 'UTF-8'); ?></strong>
+                        <span class="status-pill <?php echo htmlspecialchars($reservationStatus, ENT_QUOTES, 'UTF-8'); ?>">
+                            <i data-lucide="<?php echo $reservationStatus === 'confirmed' ? 'badge-check' : 'clock-3'; ?>"></i>
+                            <?php echo htmlspecialchars(ucfirst($reservationStatus), ENT_QUOTES, 'UTF-8'); ?>
+                        </span>
+                    </div>
                     <p><?php echo htmlspecialchars((string) ($reservation['location_address'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></p>
                     <div class="detail-meta">
                         <span class="meta-pill"><i data-lucide="calendar-days" style="width:14px;height:14px;"></i><?php echo htmlspecialchars(date('M j, Y', strtotime((string) ($reservation['date'] ?? 'now'))), ENT_QUOTES, 'UTF-8'); ?></span>
@@ -201,6 +221,17 @@ function partner_dashboard_time_label($time) {
                         <span class="meta-pill"><i data-lucide="users" style="width:14px;height:14px;"></i><?php echo (int) ($reservation['guests'] ?? 1); ?></span>
                     </div>
                     <p class="mini-note"><?php echo htmlspecialchars(trim((string) ($reservation['user_name'] ?? 'Where2Go customer')), ENT_QUOTES, 'UTF-8'); ?><?php echo !empty($reservation['user_email']) ? ' - ' . htmlspecialchars((string) $reservation['user_email'], ENT_QUOTES, 'UTF-8') : ''; ?></p>
+                    <form action="partner-dashboard.php" method="POST" class="action-row reservation-action-row">
+                        <input type="hidden" name="action" value="update_reservation_status">
+                        <input type="hidden" name="booking_id" value="<?php echo (int) ($reservation['id'] ?? 0); ?>">
+                        <?php if ($reservationStatus === 'pending'): ?>
+                        <button class="secondary-btn" type="submit" name="status" value="canceled"><i data-lucide="x-circle"></i>Reject</button>
+                        <button class="primary-btn" type="submit" name="status" value="confirmed"><i data-lucide="badge-check"></i>Approve</button>
+                        <?php elseif ($reservationStatus === 'confirmed'): ?>
+                        <button class="secondary-btn" type="submit" name="status" value="canceled"><i data-lucide="x-circle"></i>Cancel</button>
+                        <button class="primary-btn" type="submit" name="status" value="completed"><i data-lucide="check-circle-2"></i>Complete</button>
+                        <?php endif; ?>
+                    </form>
                 </div>
                 <?php endforeach; ?>
             </div>

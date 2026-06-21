@@ -17,7 +17,7 @@ $approvedPartnerPlaces = array_map('normalize_public_business_for_discovery', ge
 $partnerHighlights = array_slice($approvedPartnerPlaces, 0, 6);
 $visitedPlaceIds = get_visited_place_ids();
 $visitedLookup = array_flip($visitedPlaceIds);
-$choosePlaces = array_values(array_merge($originalPlaces, $approvedPartnerPlaces));
+$choosePlaces = dedupe_discovery_places(array_merge($originalPlaces, $approvedPartnerPlaces));
 $chooseLocations = [
     'Cairo',
     'Giza',
@@ -89,21 +89,27 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
     }
 
     $payloadJson = htmlspecialchars(json_encode($trackPayload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
-    $photoStyle = !empty($place['photo_url'])
-        ? " style=\"background-image:url('" . htmlspecialchars((string) $place['photo_url'], ENT_QUOTES, 'UTF-8') . "');background-size:cover;background-position:center;\""
-        : '';
+    $heroMedia = get_place_hero_media($place['media_items'] ?? [], $place['hero_media_url'] ?? ($place['photo_url'] ?? ''));
+    $heroMediaUrl = trim((string) ($heroMedia['url'] ?? ''));
+    $heroMediaType = trim((string) ($heroMedia['type'] ?? ''));
     $addressText = trim((string) ($place['address'] ?? ''));
     $priceText = trim((string) ($place['price_range'] ?? 'See details'));
     $ratingText = trim((string) ($place['rating'] ?? 'Featured'));
+    $catalogLabel = trim((string) ($place['catalog_label'] ?? ($place['category'] ?? 'Place')));
+    $catalogIcon = trim((string) ($place['catalog_icon'] ?? 'layers-3'));
     ?>
     <article class="place-card" data-place-card data-place-id="<?php echo htmlspecialchars($placeId, ENT_QUOTES, 'UTF-8'); ?>" data-search="<?php echo htmlspecialchars((string) ($place['search_blob'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>">
-        <div class="place-media"<?php echo $photoStyle; ?>>
-            <?php if (empty($place['photo_url'])): ?>
+        <div class="place-media<?php echo $heroMediaUrl !== '' ? ' has-media' : ''; ?>">
+            <?php if ($heroMediaUrl !== '' && $heroMediaType === 'video'): ?>
+            <video class="place-media-asset" src="<?php echo htmlspecialchars($heroMediaUrl, ENT_QUOTES, 'UTF-8'); ?>" muted loop autoplay playsinline preload="metadata"></video>
+            <?php elseif ($heroMediaUrl !== ''): ?>
+            <img class="place-media-asset" src="<?php echo htmlspecialchars($heroMediaUrl, ENT_QUOTES, 'UTF-8'); ?>" alt="<?php echo htmlspecialchars((string) ($place['name'] ?? 'Where2Go place'), ENT_QUOTES, 'UTF-8'); ?>" loading="lazy" decoding="async">
+            <?php else: ?>
             <i data-lucide="<?php echo htmlspecialchars((string) ($place['icon'] ?? 'map-pinned'), ENT_QUOTES, 'UTF-8'); ?>" class="place-media-icon"></i>
             <?php endif; ?>
         </div>
         <div class="place-chip-row">
-            <span class="place-chip"><i data-lucide="layers-3" class="tiny-icon"></i><?php echo htmlspecialchars((string) ($place['category'] ?? 'Place'), ENT_QUOTES, 'UTF-8'); ?></span>
+            <span class="place-chip"><i data-lucide="<?php echo htmlspecialchars($catalogIcon, ENT_QUOTES, 'UTF-8'); ?>" class="tiny-icon"></i><?php echo htmlspecialchars($catalogLabel !== '' ? $catalogLabel : 'Place', ENT_QUOTES, 'UTF-8'); ?></span>
             <span class="place-chip"><i data-lucide="<?php echo ($trackSource === 'business' ? 'badge-check' : 'sparkles'); ?>" class="tiny-icon"></i><?php echo htmlspecialchars($trackSource === 'business' ? 'Approved partner' : 'Original pick', ENT_QUOTES, 'UTF-8'); ?></span>
             <?php if ($addressText !== ''): ?>
             <span class="place-chip"><i data-lucide="map-pin" class="tiny-icon"></i><?php echo htmlspecialchars($addressText, ENT_QUOTES, 'UTF-8'); ?></span>
@@ -143,18 +149,20 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Discover Cairo hangouts, approved local businesses, offers, reservations, and saved places with Where2Go.">
 <title>Where2Go | Discover your next hangout</title>
+<link rel="icon" type="image/png" href="assets/images/where2go_transparent_clean.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest"></script>
-<link rel="stylesheet" href="assets/css/home.css?v=20260502-catalog-dropdowns-2">
+<link rel="stylesheet" href="assets/css/home.css?v=20260516-theme-logo-1">
 </head>
-<body class="light-mode">
+<body class="dark-mode">
 <!-- Intro overlay that appears once per session before the homepage becomes interactive. -->
 <div class="intro-screen" id="intro-screen" aria-hidden="true">
     <div class="intro-card">
-        <img src="assets/images/where2go_transparent.png" alt="Where2Go logo" class="intro-logo">
+        <img src="assets/images/where2go_transparent_clean.png" alt="Where2Go logo" class="intro-logo">
         <div class="intro-copy">Browse the original picks, discover approved local businesses, and keep everything inside Where2Go.</div>
     </div>
 </div>
@@ -165,11 +173,11 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
         <div class="topbar-inner">
             <div class="topbar-left">
                 <a class="brand-link" href="Home.php" aria-label="Where2Go home">
-                    <img src="assets/images/where2go_transparent.png" alt="Where2Go logo" class="logo">
+                    <img src="assets/images/where2go_transparent_clean.png" alt="Where2Go logo" class="logo">
                 </a>
                 <button class="theme-toggle" id="theme-toggle" type="button">
-                    <i data-lucide="sun-medium" id="theme-icon"></i>
-                    <span id="theme-label">Light mode</span>
+                    <i data-lucide="moon-star" id="theme-icon"></i>
+                    <span id="theme-label">Dark mode</span>
                 </button>
             </div>
 
@@ -178,11 +186,11 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
                 <a class="nav-link" href="Home.php#places">Places</a>
                 <a class="nav-link" href="search.php">Search</a>
                 <a class="nav-link" href="about.php">About</a>
+                <a class="nav-link" href="partner-login.php">Partner portal</a>
                 <?php if ($adminLoggedIn): ?>
                 <a class="nav-link" href="Home.php#partners">Partners</a>
                 <a class="nav-link" href="admin/dashboard.php">Admin</a>
                 <a class="nav-link" href="admin/business-approvals.php">Approvals</a>
-                <a class="nav-link" href="partner-login.php">Partner portal</a>
                 <?php endif; ?>
             </nav>
 
@@ -261,9 +269,9 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
                                         </select>
                                         <select data-catalog-target="activity" data-ui-select data-ui-select-icon="sparkles" aria-label="Choose activity">
                                             <option value="">Activity</option>
-                                            <option value="restaurants">Restaurants</option>
-                                            <option value="cafes">Cafes</option>
-                                            <option value="activities">Activities</option>
+                                            <option value="restaurant">Restaurants</option>
+                                            <option value="cafe">Cafes</option>
+                                            <option value="activity">Activities</option>
                                             <option value="entertainment">Entertainment</option>
                                             <option value="nightlife">Nightlife</option>
                                             <option value="heritage">Heritage & museums</option>
@@ -298,9 +306,9 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
                                     <span>Activity</span>
                                     <select data-current-activity data-ui-select data-ui-select-icon="sparkles">
                                         <option value="">Any activity</option>
-                                        <option value="restaurants">Restaurants</option>
-                                        <option value="cafes">Cafes</option>
-                                        <option value="activities">Activities</option>
+                                        <option value="restaurant">Restaurants</option>
+                                        <option value="cafe">Cafes</option>
+                                        <option value="activity">Activities</option>
                                         <option value="entertainment">Entertainment</option>
                                         <option value="nightlife">Nightlife</option>
                                         <option value="heritage">Heritage & museums</option>
@@ -362,11 +370,12 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
                 </div>
 
                 <div class="category-grid">
-                    <article class="category-card" data-category-query="restaurant"><div class="category-icon"><i data-lucide="utensils-crossed"></i></div><div class="category-name">Restaurants</div></article>
-                    <article class="category-card" data-category-query="cafe"><div class="category-icon"><i data-lucide="coffee"></i></div><div class="category-name">Cafes</div></article>
-                    <article class="category-card" data-category-query="activity"><div class="category-icon"><i data-lucide="mountain-snow"></i></div><div class="category-name">Activities</div></article>
-                    <article class="category-card" data-category-query="entertainment"><div class="category-icon"><i data-lucide="star"></i></div><div class="category-name">Entertainment</div></article>
-                    <article class="category-card" data-category-query="nightlife"><div class="category-icon"><i data-lucide="music-4"></i></div><div class="category-name">Nightlife</div></article>
+                    <article class="category-card" data-category-catalog="restaurant"><div class="category-icon"><i data-lucide="utensils-crossed"></i></div><div class="category-name">Restaurants</div></article>
+                    <article class="category-card" data-category-catalog="cafe"><div class="category-icon"><i data-lucide="coffee"></i></div><div class="category-name">Cafes</div></article>
+                    <article class="category-card" data-category-catalog="activity"><div class="category-icon"><i data-lucide="mountain-snow"></i></div><div class="category-name">Activities</div></article>
+                    <article class="category-card" data-category-catalog="entertainment"><div class="category-icon"><i data-lucide="star"></i></div><div class="category-name">Entertainment</div></article>
+                    <article class="category-card" data-category-catalog="nightlife"><div class="category-icon"><i data-lucide="music-4"></i></div><div class="category-name">Nightlife</div></article>
+                    <article class="category-card" data-category-catalog="heritage"><div class="category-icon"><i data-lucide="landmark"></i></div><div class="category-name">Heritage</div></article>
                 </div>
             </div>
         </section>
@@ -403,7 +412,7 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
             <div class="section-inner">
                 <div class="section-head">
                     <div>
-                        <span class="section-kicker"><i data-lucide="sparkles"></i>The original 10 places</span>
+                        <span class="section-kicker"><i data-lucide="sparkles"></i>Original Where2Go places</span>
                         <h2 class="section-title">Your starting list stays right here.</h2>
                         <p class="section-desc">Browse the original Where2Go picks and find a spot that fits your plans.</p>
                     </div>
@@ -423,7 +432,7 @@ function render_home_place_card($place, $loggedIn, $visitedLookup) {
         <div class="footer-inner">
             <div class="footer-grid">
                 <div class="footer-card">
-                    <img src="assets/images/where2go_transparent.png" alt="Where2Go logo" class="logo footer-logo">
+                    <img src="assets/images/where2go_transparent_clean.png" alt="Where2Go logo" class="logo footer-logo">
                     <p>Discover curated places, partner businesses, and saved favorites around Cairo.</p>
                 </div>
                 <div class="footer-card">
@@ -473,6 +482,6 @@ window.where2goHomeData = <?php echo json_encode([
     'choosePlaces' => $choosePlaces,
 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
 </script>
-<script src="assets/js/home.js?v=20260502-catalog-dropdowns-2"></script>
+<script src="assets/js/home.js?v=20260518-catalog-search-1"></script>
 </body>
 </html>

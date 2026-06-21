@@ -37,6 +37,7 @@ $existingReview = null;
 $canReviewBusiness = false;
 $catalogReviews = [];
 $catalogReviewSummary = ['average_rating' => null, 'review_count' => 0];
+$detailMediaItems = [];
 
 // Format stored opening or reservation times into a customer-friendly label.
 function format_display_time($time) {
@@ -97,6 +98,71 @@ function get_location_guest_limit($location) {
     return max(4, $tablesPerHour * 4);
 }
 
+function build_detail_media_item($url) {
+    $url = trim((string) $url);
+
+    if ($url === '') {
+        return null;
+    }
+
+    $type = where2go_media_type_from_url($url);
+
+    return [
+        'url' => $url,
+        'type' => $type !== '' ? $type : 'image',
+    ];
+}
+
+function build_business_detail_media_items($business) {
+    $business = is_array($business) ? $business : [];
+    $urls = [];
+    $mediaItems = [];
+
+    if (!empty($business['photo_url'])) {
+        $urls[] = (string) $business['photo_url'];
+    }
+
+    foreach (($business['photos'] ?? []) as $photo) {
+        if (!empty($photo['image_url'])) {
+            $urls[] = (string) $photo['image_url'];
+        }
+    }
+
+    foreach ($urls as $url) {
+        $item = build_detail_media_item($url);
+
+        if (!$item || isset($mediaItems[$item['url']])) {
+            continue;
+        }
+
+        $mediaItems[$item['url']] = $item;
+    }
+
+    return array_values($mediaItems);
+}
+
+function render_detail_media_asset($mediaItem, $altText, $className = 'gallery-main-media') {
+    $mediaItem = is_array($mediaItem) ? $mediaItem : [];
+    $url = trim((string) ($mediaItem['url'] ?? ''));
+    $type = trim((string) ($mediaItem['type'] ?? 'image'));
+    $isThumbnail = $className === 'gallery-thumb-media';
+
+    if ($url === '') {
+        return;
+    }
+
+    if ($type === 'video') {
+        ?>
+        <video class="<?php echo htmlspecialchars($className, ENT_QUOTES, 'UTF-8'); ?>" src="<?php echo htmlspecialchars($url, ENT_QUOTES, 'UTF-8'); ?>" muted<?php echo $isThumbnail ? '' : ' loop autoplay'; ?> playsinline preload="metadata"></video>
+        <?php
+        return;
+    }
+
+    ?>
+    <img class="<?php echo htmlspecialchars($className, ENT_QUOTES, 'UTF-8'); ?>" src="<?php echo htmlspecialchars($url, ENT_QUOTES, 'UTF-8'); ?>" alt="<?php echo htmlspecialchars($altText, ENT_QUOTES, 'UTF-8'); ?>" loading="lazy" decoding="async">
+    <?php
+}
+
 // Build the detail page for an approved partner business and its booking flow.
 if ($businessId > 0) {
     if (!$business || !can_current_user_access_business($business)) {
@@ -108,6 +174,7 @@ if ($businessId > 0) {
     $source = 'business';
     $pageTitle = (string) ($business['name'] ?? 'Business details');
     $pageSummary = trim((string) ($business['description'] ?? 'Business details on Where2Go.'));
+    $detailMediaItems = build_business_detail_media_items($business);
     $activePlaceId = (string) $businessId;
     $saveSource = 'business';
     $savePayload = [
@@ -159,6 +226,22 @@ if ($businessId > 0) {
 
     if ($selectedLocation) {
         $selectedGuests = min($selectedGuests, get_location_guest_limit($selectedLocation));
+    }
+
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'delete_review') {
+        if (!$loggedIn) {
+            $messages[] = ['type' => 'error', 'text' => 'Login with a customer account before deleting a review.'];
+        } else {
+            $reviewResult = delete_customer_business_review($customerId, $businessId);
+            $messages[] = [
+                'type' => !empty($reviewResult['ok']) ? 'success' : 'error',
+                'text' => (string) ($reviewResult['message'] ?? 'The review could not be deleted right now.'),
+            ];
+
+            if (!empty($reviewResult['ok'])) {
+                $business = get_business_by_id($businessId);
+            }
+        }
     }
 
     if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'submit_review') {
@@ -235,8 +318,21 @@ if ($businessId > 0) {
     $catalogPlace = normalize_catalog_place_for_discovery($catalogPlace);
     $pageTitle = (string) ($catalogPlace['name'] ?? 'Place details');
     $pageSummary = (string) ($catalogPlace['description'] ?? 'Discover more on Where2Go.');
+    $detailMediaItems = is_array($catalogPlace['media_items'] ?? null) ? $catalogPlace['media_items'] : [];
     $activePlaceId = (string) ($catalogPlace['id'] ?? '');
     $savePayload = [];
+
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'delete_catalog_review') {
+        if (!$loggedIn) {
+            $messages[] = ['type' => 'error', 'text' => 'Login with a customer account before deleting a review.'];
+        } else {
+            $reviewResult = delete_catalog_place_review($customerId, $activePlaceId);
+            $messages[] = [
+                'type' => !empty($reviewResult['ok']) ? 'success' : 'error',
+                'text' => (string) ($reviewResult['message'] ?? 'The review could not be deleted right now.'),
+            ];
+        }
+    }
 
     if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'submit_catalog_review') {
         if (!$loggedIn) {
@@ -274,25 +370,27 @@ $savePayloadJson = htmlspecialchars(json_encode($savePayload, JSON_UNESCAPED_SLA
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="View Where2Go place details, photos, reviews, availability, offers, and contact information.">
 <title>Where2Go | <?php echo htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8'); ?></title>
+<link rel="icon" type="image/png" href="assets/images/where2go_transparent_clean.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest"></script>
-<link rel="stylesheet" href="assets/css/discover.css?v=20260502-reservation-layout-1">
+<link rel="stylesheet" href="assets/css/discover.css?v=20260515-reservation-ajax-1">
 <link rel="stylesheet" href="assets/css/rewards.css?v=20260502-star-reviews-2">
 </head>
-<body class="light-mode">
+<body class="dark-mode">
 <!-- Place detail header with navigation, account access, and the theme toggle. -->
 <header class="topbar">
     <div class="topbar-inner">
         <div class="topbar-left">
             <a class="brand-link" href="Home.php" aria-label="Where2Go home">
-                <img src="assets/images/where2go_transparent.png" alt="Where2Go logo" class="logo">
+                <img src="assets/images/where2go_transparent_clean.png" alt="Where2Go logo" class="logo">
             </a>
             <button class="theme-toggle" id="theme-toggle" type="button">
-                <i data-lucide="sun-medium" id="theme-icon"></i>
-                <span id="theme-label">Light mode</span>
+                <i data-lucide="moon-star" id="theme-icon"></i>
+                <span id="theme-label">Dark mode</span>
             </button>
         </div>
 
@@ -377,16 +475,30 @@ $savePayloadJson = htmlspecialchars(json_encode($savePayload, JSON_UNESCAPED_SLA
     <section class="detail-panel">
         <div class="detail-layout">
             <div>
-                <div class="gallery-main" id="gallery-main"<?php if ($source === 'business' && !empty($business['photo_url'])): ?> style="background-image:url('<?php echo htmlspecialchars((string) $business['photo_url'], ENT_QUOTES, 'UTF-8'); ?>');background-size:cover;background-position:center;"<?php endif; ?>>
-                    <?php if ($source === 'catalog' || ($source === 'business' && empty($business['photo_url']))): ?>
+                <?php $activeMedia = $detailMediaItems[0] ?? null; ?>
+                <div class="gallery-main<?php echo $activeMedia ? ' has-media' : ''; ?>" id="gallery-main">
+                    <?php if ($activeMedia): ?>
+                    <?php render_detail_media_asset($activeMedia, $pageTitle); ?>
+                    <?php else: ?>
                     <i data-lucide="<?php echo htmlspecialchars($source === 'business' ? (string) ($business['icon'] ?? 'building-2') : (string) ($catalogPlace['icon'] ?? 'map-pinned'), ENT_QUOTES, 'UTF-8'); ?>" style="width:64px;height:64px;"></i>
                     <?php endif; ?>
                 </div>
 
-                <?php if ($source === 'business' && !empty($business['photos'])): ?>
+                <?php if (count($detailMediaItems) > 1): ?>
                 <div class="gallery-strip" id="gallery-strip">
-                    <?php foreach ($business['photos'] as $index => $photo): ?>
-                    <a class="gallery-thumb<?php echo $index === 0 ? ' is-active' : ''; ?>" href="<?php echo htmlspecialchars((string) ($photo['image_url'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" target="_blank" rel="noopener noreferrer" style="background-image:url('<?php echo htmlspecialchars((string) ($photo['image_url'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>');"></a>
+                    <?php foreach ($detailMediaItems as $index => $mediaItem): ?>
+                    <button
+                        class="gallery-thumb<?php echo $index === 0 ? ' is-active' : ''; ?>"
+                        type="button"
+                        data-media-url="<?php echo htmlspecialchars((string) ($mediaItem['url'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>"
+                        data-media-type="<?php echo htmlspecialchars((string) ($mediaItem['type'] ?? 'image'), ENT_QUOTES, 'UTF-8'); ?>"
+                        aria-label="Show <?php echo htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8'); ?> media <?php echo $index + 1; ?>"
+                    >
+                        <?php render_detail_media_asset($mediaItem, $pageTitle, 'gallery-thumb-media'); ?>
+                        <?php if (($mediaItem['type'] ?? '') === 'video'): ?>
+                        <span class="gallery-video-badge"><i data-lucide="play"></i></span>
+                        <?php endif; ?>
+                    </button>
                     <?php endforeach; ?>
                 </div>
                 <?php endif; ?>
@@ -461,7 +573,6 @@ $savePayloadJson = htmlspecialchars(json_encode($savePayload, JSON_UNESCAPED_SLA
                         </div>
                         <?php else: ?>
                         <form action="place.php?business_id=<?php echo $businessId; ?>" method="POST" class="reward-form-grid" style="margin-top:0;">
-                            <input type="hidden" name="action" value="submit_review">
                             <div class="reward-form-grid two-up">
                                 <div class="field">
                                     <span>Rating</span>
@@ -497,7 +608,10 @@ $savePayloadJson = htmlspecialchars(json_encode($savePayload, JSON_UNESCAPED_SLA
                                 <textarea name="review_comment" placeholder="Tell other customers what stood out about the experience."><?php echo htmlspecialchars((string) ($existingReview['comment'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></textarea>
                             </label>
                             <div class="card-actions">
-                                <button class="primary-btn" type="submit"><i data-lucide="message-square-heart"></i><?php echo $existingReview ? 'Update review' : 'Post review'; ?></button>
+                                <button class="primary-btn" type="submit" name="action" value="submit_review"><i data-lucide="message-square-heart"></i><?php echo $existingReview ? 'Update review' : 'Post review'; ?></button>
+                                <?php if ($existingReview): ?>
+                                <button class="secondary-btn" type="submit" name="action" value="delete_review" formnovalidate onclick="return confirm('Delete your review?');"><i data-lucide="trash-2"></i>Delete review</button>
+                                <?php endif; ?>
                             </div>
                         </form>
                         <?php endif; ?>
@@ -516,7 +630,6 @@ $savePayloadJson = htmlspecialchars(json_encode($savePayload, JSON_UNESCAPED_SLA
                         </div>
                         <?php else: ?>
                         <form action="place.php?catalog_id=<?php echo rawurlencode($activePlaceId); ?>" method="POST" class="reward-form-grid" style="margin-top:0;">
-                            <input type="hidden" name="action" value="submit_catalog_review">
                             <div class="field">
                                 <span>Rating</span>
                                 <?php $selectedRating = max(1, min(5, (int) ($existingReview['rating'] ?? 5))); ?>
@@ -541,7 +654,10 @@ $savePayloadJson = htmlspecialchars(json_encode($savePayload, JSON_UNESCAPED_SLA
                                 <textarea name="review_comment" placeholder="Tell other customers what stood out about this place."><?php echo htmlspecialchars((string) ($existingReview['comment'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></textarea>
                             </label>
                             <div class="card-actions">
-                                <button class="primary-btn" type="submit"><i data-lucide="message-square-heart"></i><?php echo $existingReview ? 'Update review' : 'Post review'; ?></button>
+                                <button class="primary-btn" type="submit" name="action" value="submit_catalog_review"><i data-lucide="message-square-heart"></i><?php echo $existingReview ? 'Update review' : 'Post review'; ?></button>
+                                <?php if ($existingReview): ?>
+                                <button class="secondary-btn" type="submit" name="action" value="delete_catalog_review" formnovalidate onclick="return confirm('Delete your review?');"><i data-lucide="trash-2"></i>Delete review</button>
+                                <?php endif; ?>
                             </div>
                         </form>
                         <?php endif; ?>
@@ -748,6 +864,6 @@ window.where2goPlaceData = <?php echo json_encode([
     'visitedPlaceIds' => array_values($visitedPlaceIds),
 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
 </script>
-<script src="assets/js/place-detail.js?v=20260502-star-reservation-1"></script>
+<script src="assets/js/place-detail.js?v=20260515-reservation-ajax-1"></script>
 </body>
 </html>

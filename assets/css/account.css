@@ -64,6 +64,7 @@ input {
     position: sticky;
     top: 0;
     z-index: 30;
+    -webkit-backdrop-filter: blur(14px);
     backdrop-filter: blur(14px);
     background: rgba(255, 255, 255, 0.8);
     border-bottom: 1px solid var(--border);
@@ -640,7 +641,10 @@ body.dark-mode .place-media {
         width: 100%;
         align-items: flex-start;
         flex-direction: row;
+        flex-wrap: wrap;
         justify-content: flex-start;
+        overflow-x: visible;
+        white-space: normal;
     }
 
     .profile-menu {

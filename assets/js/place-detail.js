@@ -17,6 +17,7 @@
     let galleryTimer = null;
     let topbarCompact = false;
     let topbarRaf = 0;
+    let reservationAbortController = null;
 
     // Apply the saved light or dark theme and refresh the Lucide icons.
 
@@ -239,7 +240,44 @@
         }
     }
 
-    // Swap the main gallery image and keep the thumbnail strip in sync.
+    function guessMediaType(url) {
+        const cleanUrl = String(url || '').split('?')[0].split('#')[0].toLowerCase();
+
+        return /\.(mp4|webm|ogg|mov|m4v)$/.test(cleanUrl) ? 'video' : 'image';
+    }
+
+    function renderGalleryMedia(url, type) {
+        if (!galleryMain || !url) {
+            return;
+        }
+
+        const mediaType = type || guessMediaType(url);
+        galleryMain.innerHTML = '';
+        galleryMain.style.backgroundImage = '';
+        galleryMain.classList.add('has-media');
+
+        if (mediaType === 'video') {
+            const video = document.createElement('video');
+            video.className = 'gallery-main-media';
+            video.src = url;
+            video.muted = true;
+            video.loop = true;
+            video.autoplay = true;
+            video.playsInline = true;
+            video.preload = 'metadata';
+            galleryMain.appendChild(video);
+            video.play().catch(() => {});
+            return;
+        }
+
+        const image = document.createElement('img');
+        image.className = 'gallery-main-media';
+        image.src = url;
+        image.alt = document.getElementById('detail-title')?.textContent || 'Place media';
+        galleryMain.appendChild(image);
+    }
+
+    // Swap the main gallery media and keep the thumbnail strip in sync.
 
     function setGalleryImage(index) {
         if (!galleryMain || galleryThumbs.length === 0) {
@@ -248,17 +286,15 @@
 
         const nextIndex = ((index % galleryThumbs.length) + galleryThumbs.length) % galleryThumbs.length;
         const nextThumb = galleryThumbs[nextIndex];
-        const imageUrl = nextThumb.getAttribute('href') || '';
+        const mediaUrl = nextThumb.dataset.mediaUrl || nextThumb.getAttribute('href') || '';
+        const mediaType = nextThumb.dataset.mediaType || guessMediaType(mediaUrl);
 
         galleryThumbs.forEach((thumb, thumbIndex) => {
             thumb.classList.toggle('is-active', thumbIndex === nextIndex);
         });
 
-        if (imageUrl !== '') {
-            galleryMain.innerHTML = '';
-            galleryMain.style.backgroundImage = `url("${imageUrl.replace(/"/g, '\\"')}")`;
-            galleryMain.style.backgroundSize = 'cover';
-            galleryMain.style.backgroundPosition = 'center';
+        if (mediaUrl !== '') {
+            renderGalleryMedia(mediaUrl, mediaType);
         }
 
         galleryIndex = nextIndex;
@@ -357,6 +393,88 @@
         });
     }
 
+    function getReservationRequestUrl(form, submitter) {
+        const action = form.getAttribute('action') || window.location.href;
+        const requestUrl = new URL(action, window.location.href);
+        const formData = new FormData(form);
+
+        if (submitter && submitter.name) {
+            formData.set(submitter.name, submitter.value || '');
+        }
+
+        formData.forEach((value, key) => {
+            requestUrl.searchParams.set(key, value);
+        });
+
+        return requestUrl;
+    }
+
+    async function refreshReservationPanel(form, submitter) {
+        const currentPanel = document.querySelector('.reservation-panel');
+
+        if (!currentPanel) {
+            return;
+        }
+
+        const requestUrl = getReservationRequestUrl(form, submitter);
+
+        if (reservationAbortController) {
+            reservationAbortController.abort();
+        }
+
+        const controller = new AbortController();
+        reservationAbortController = controller;
+        currentPanel.classList.add('is-loading');
+
+        try {
+            const response = await fetch(requestUrl.toString(), {
+                credentials: 'same-origin',
+                headers: {
+                    'X-Requested-With': 'fetch',
+                },
+                signal: controller.signal,
+            });
+
+            if (!response.ok) {
+                throw new Error('Availability could not be refreshed.');
+            }
+
+            const html = await response.text();
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            const nextPanel = doc.querySelector('.reservation-panel');
+
+            if (!nextPanel) {
+                throw new Error('Availability could not be refreshed.');
+            }
+
+            currentPanel.replaceWith(nextPanel);
+            window.history.replaceState({}, '', requestUrl.toString());
+            lucide.createIcons();
+        } catch (error) {
+            if (error.name !== 'AbortError') {
+                currentPanel.classList.remove('is-loading');
+                window.alert(error.message || 'Availability could not be refreshed right now.');
+            }
+        } finally {
+            if (reservationAbortController === controller) {
+                reservationAbortController = null;
+            }
+        }
+    }
+
+    function setupReservationAjax() {
+        document.addEventListener('submit', (event) => {
+            const form = event.target;
+
+            if (!(form instanceof HTMLFormElement) || !form.matches('.reservation-controls, .availability-grid-form')) {
+                return;
+            }
+
+            event.preventDefault();
+            refreshReservationPanel(form, event.submitter || null);
+        });
+    }
+
     if (themeToggle) {
         themeToggle.addEventListener('click', () => {
             const nextTheme = body.classList.contains('dark-mode') ? 'light' : 'dark';
@@ -375,10 +493,11 @@
 
     hydrateSavedLookup();
     updateSaveButton();
-    applyTheme(localStorage.getItem('where2go-theme') || 'light');
+    applyTheme(localStorage.getItem('where2go-theme') || 'dark');
     setupProfileMenus();
     setupGalleryAutoplay();
     setupStarRatings();
+    setupReservationAjax();
     updateTopbarState();
     lucide.createIcons();
 })();

@@ -263,7 +263,7 @@
     window.addEventListener('scroll', requestTopbarStateUpdate, { passive: true });
 
     hydrateSavedLookup();
-    applyTheme(localStorage.getItem('where2go-theme') || 'light');
+    applyTheme(localStorage.getItem('where2go-theme') || 'dark');
     setupProfileMenus();
     setupSaveButtons();
     setupSliders();

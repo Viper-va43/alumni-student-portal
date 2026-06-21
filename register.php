@@ -17,6 +17,7 @@ $middle_name = trim($_POST['Middle_N'] ?? '');
 $last_name = trim($_POST['Last_N'] ?? '');
 $email = trim($_POST['Email'] ?? '');
 $password = $_POST['Password'] ?? '';
+$confirm_password = $_POST['Confirm_Password'] ?? '';
 $phone = trim($_POST['Customer_NUM'] ?? '');
 $address = trim($_POST['Physical_Address'] ?? '');
 $dob = $_POST['Date_Of_Birth'] ?? '';
@@ -25,8 +26,8 @@ $nationality = trim($_POST['Nationality'] ?? '');
 
 // Validate the submitted profile details before creating a new customer account.
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if ($first_name === '' || $last_name === '' || $email === '' || $password === '') {
-        $errors[] = 'First name, last name, email, and password are required.';
+    if ($first_name === '' || $last_name === '' || $email === '' || $password === '' || $confirm_password === '') {
+        $errors[] = 'First name, last name, email, password, and password confirmation are required.';
     }
 
     if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -35,6 +36,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($password !== '' && !preg_match('/^(?=.*[A-Z])(?=.*[\\W_]).{8,}$/', $password)) {
         $errors[] = 'Password must be at least 8 characters and include 1 uppercase letter and 1 special character.';
+    }
+
+    if ($password !== '' && $confirm_password !== '' && $password !== $confirm_password) {
+        $errors[] = 'Password confirmation must match the password.';
+    }
+
+    if ($dob !== '') {
+        $dobDate = DateTime::createFromFormat('Y-m-d', $dob);
+
+        if (!$dobDate || $dobDate->format('Y-m-d') !== $dob) {
+            $errors[] = 'Please enter a valid date of birth.';
+        } elseif ($dobDate > new DateTime('today')) {
+            $errors[] = 'Date of birth cannot be in the future.';
+        }
     }
 
     if (!$conn) {
@@ -105,7 +120,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Create a Where2Go account to save Cairo places, get suggestions, review visits, and access rewards.">
 <title>Create Your Where2Go Account</title>
+<link rel="icon" type="image/png" href="assets/images/where2go_transparent_clean.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -193,6 +210,7 @@ img {
     top: 0;
     z-index: 20;
     background: var(--topbar-bg);
+    -webkit-backdrop-filter: blur(14px);
     backdrop-filter: blur(14px);
     border-bottom: 1px solid var(--border);
 }
@@ -500,19 +518,19 @@ select:focus {
 }
 </style>
 </head>
-<body class="light-mode">
+<body class="dark-mode">
 <div class="page-shell">
     <!-- Header that keeps registration connected to the main site and theme control. -->
     <header class="topbar">
         <div class="topbar-inner">
             <div class="brand-wrap">
                 <a class="brand" href="Home.php" aria-label="Where2Go home">
-                    <img src="assets/images/where2go_transparent.png" alt="Where2Go logo" class="logo">
+                    <img src="assets/images/where2go_transparent_clean.png" alt="Where2Go logo" class="logo">
                 </a>
 
                 <button class="theme-toggle" id="theme-toggle" type="button">
-                    <i data-lucide="sun-medium" id="theme-icon"></i>
-                    <span id="theme-label">Light mode</span>
+                    <i data-lucide="moon-star" id="theme-icon"></i>
+                    <span id="theme-label">Dark mode</span>
                 </button>
             </div>
 
@@ -579,6 +597,11 @@ select:focus {
                         <div class="field">
                             <label for="password">Password</label>
                             <input id="password" type="password" name="Password" required>
+                        </div>
+
+                        <div class="field">
+                            <label for="confirm_password">Confirm password</label>
+                            <input id="confirm_password" type="password" name="Confirm_Password" required>
                         </div>
 
                         <div class="field">
@@ -662,11 +685,11 @@ function applyTheme(theme) {
     lucide.createIcons();
 }
 
-const savedTheme = localStorage.getItem(themeKey) || 'light';
+const savedTheme = localStorage.getItem(themeKey) || 'dark';
 applyTheme(savedTheme);
 
 themeToggle.addEventListener('click', () => {
-    const currentTheme = localStorage.getItem(themeKey) || 'light';
+    const currentTheme = localStorage.getItem(themeKey) || 'dark';
     applyTheme(currentTheme === 'dark' ? 'light' : 'dark');
 });
 </script>

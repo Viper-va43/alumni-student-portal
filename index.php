@@ -74,7 +74,9 @@ if (!$conn) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Explore curated Cairo places, search by mood, and start planning your next Where2Go outing.">
 <title>Where2Go Cairo</title>
+<link rel="icon" type="image/png" href="assets/images/where2go_transparent_clean.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -211,6 +213,7 @@ img {
     box-shadow: 0 36px 80px rgba(0, 0, 0, 0.35);
     transform: translateY(20px) scale(0.96);
     transition: transform 0.75s ease;
+    -webkit-backdrop-filter: blur(18px);
     backdrop-filter: blur(18px);
 }
 
@@ -229,6 +232,7 @@ img {
 
 .intro-logo {
     width: min(420px, 72vw);
+    filter: none !important;
 }
 
 .intro-line {
@@ -243,6 +247,7 @@ img {
     top: 0;
     z-index: 20;
     background: var(--topbar-bg);
+    -webkit-backdrop-filter: blur(14px);
     backdrop-filter: blur(14px);
     border-bottom: 1px solid var(--border);
 }
@@ -426,6 +431,7 @@ body.light-mode .logo {
     border-radius: 22px;
     background: rgba(255, 255, 255, 0.12);
     border: 1px solid rgba(255, 255, 255, 0.18);
+    -webkit-backdrop-filter: blur(10px);
     backdrop-filter: blur(10px);
 }
 
@@ -474,6 +480,7 @@ body.light-mode .logo {
     border-radius: 24px;
     background: rgba(255, 255, 255, 0.12);
     padding: 18px;
+    -webkit-backdrop-filter: blur(10px);
     backdrop-filter: blur(10px);
 }
 
@@ -820,12 +827,12 @@ body.light-mode .logo {
 }
 </style>
 </head>
-<body class="light-mode">
+<body class="dark-mode">
 <!-- Intro overlay shown once per session before the landing page becomes interactive. -->
 <div class="intro-screen" id="intro-screen" aria-hidden="true">
     <div class="intro-card">
         <div class="intro-logo-shell">
-            <img class="intro-logo" src="assets/images/where2go-logo.svg" alt="Where2Go logo">
+            <img class="intro-logo" src="assets/images/where2go_transparent_clean.png" alt="Where2Go logo">
         </div>
         <div class="intro-line">Discover Cairo one spot at a time.</div>
     </div>
@@ -837,12 +844,12 @@ body.light-mode .logo {
         <div class="topbar-inner">
             <div class="brand-wrap">
                 <a class="brand" href="#home" aria-label="Where2Go home">
-                    <img src="assets/images/where2go_transparent.png" alt="Where2Go logo" class="logo">
+                    <img src="assets/images/where2go_transparent_clean.png" alt="Where2Go logo" class="logo">
                 </a>
 
                 <button class="theme-toggle" id="theme-toggle" type="button">
-                    <i data-lucide="sun-medium" id="theme-icon"></i>
-                    <span id="theme-label">Light mode</span>
+                    <i data-lucide="moon-star" id="theme-icon"></i>
+                    <span id="theme-label">Dark mode</span>
                 </button>
             </div>
 
@@ -931,7 +938,7 @@ body.light-mode .logo {
                         <aside class="hero-side">
                             <div class="hero-side-card">
                                 <div class="hero-logo-shell">
-                                    <img class="hero-logo" src="assets/images/where2go-logo.svg" alt="Where2Go logo">
+                                    <img class="hero-logo" src="assets/images/where2go_transparent_clean.png" alt="Where2Go logo">
                                 </div>
                                 <p>Find a place that fits the mood, the area, and the budget for your next plan.</p>
                             </div>
@@ -1074,7 +1081,7 @@ body.light-mode .logo {
                 <div class="footer-grid">
                     <div>
                         <div class="footer-logo-shell">
-                            <img class="footer-logo" src="assets/images/where2go-logo.svg" alt="Where2Go logo">
+                            <img class="footer-logo" src="assets/images/where2go_transparent_clean.png" alt="Where2Go logo">
                         </div>
                         <p>Discover places worth trying in Cairo and keep your favorite plans close.</p>
                     </div>
@@ -1118,6 +1125,11 @@ function applyTheme(theme) {
     body.classList.toggle('light-mode', !isDark);
     themeIcon.setAttribute('data-lucide', isDark ? 'moon-star' : 'sun-medium');
     themeLabel.textContent = isDark ? 'Dark mode' : 'Light mode';
+    document.querySelectorAll('.intro-logo').forEach((logo) => {
+        logo.src = isDark
+            ? 'assets/images/where2go_transparent_clean.png'
+            : 'assets/images/where2go_transparent_white.png';
+    });
     localStorage.setItem(themeKey, theme);
     lucide.createIcons();
 }
@@ -1145,10 +1157,10 @@ function startIntro() {
     }, 2200);
 }
 
-const savedTheme = localStorage.getItem(themeKey) || 'light';
+const savedTheme = localStorage.getItem(themeKey) || 'dark';
 applyTheme(savedTheme);
 themeToggle.addEventListener('click', () => {
-    const currentTheme = localStorage.getItem(themeKey) || 'light';
+    const currentTheme = localStorage.getItem(themeKey) || 'dark';
     applyTheme(currentTheme === 'dark' ? 'light' : 'dark');
 });
 

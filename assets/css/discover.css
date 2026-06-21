@@ -48,6 +48,7 @@ code { font-family: 'Plus Jakarta Sans', sans-serif; }
     position: sticky;
     top: 0;
     z-index: 30;
+    -webkit-backdrop-filter: blur(14px);
     backdrop-filter: blur(14px);
     background: rgba(255, 255, 255, 0.8);
     border-bottom: 1px solid var(--border);
@@ -210,7 +211,8 @@ body.light-mode .logo {
 }
 
 .secondary-btn:hover,
-.quick-pill:hover {
+.quick-pill:hover,
+.quick-pill.is-active {
     color: var(--accent);
     border-color: transparent;
     box-shadow: inset 0 0 0 1px rgba(242, 108, 28, 0.42);
@@ -561,11 +563,20 @@ body.dark-mode .gallery-thumb {
 }
 
 .gallery-main {
-    min-height: 360px;
-    background-size: cover;
+    height: min(58vw, 430px);
+    min-height: 300px;
+    background-size: contain;
+    background-repeat: no-repeat;
     background-position: center;
-    align-content: end;
-    padding: 18px;
+    padding: 0;
+}
+
+.gallery-main.has-media {
+    background: #fffaf6;
+}
+
+body.dark-mode .gallery-main.has-media {
+    background: #140f0d;
 }
 
 .gallery-strip {
@@ -580,10 +591,43 @@ body.dark-mode .gallery-thumb {
     background-size: cover;
     background-position: center;
     cursor: pointer;
+    padding: 0;
 }
 
 .gallery-thumb.is-active {
     border-color: rgba(242, 108, 28, 0.5);
+}
+
+.gallery-main-media {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+
+.gallery-thumb-media {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.gallery-video-badge {
+    position: absolute;
+    inset: auto 8px 8px auto;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(12, 8, 7, 0.72);
+    color: #fff;
+}
+
+.gallery-video-badge svg {
+    width: 14px;
+    height: 14px;
 }
 
 .detail-side {
@@ -626,6 +670,11 @@ body.dark-mode .gallery-thumb {
 
 .reservation-panel {
     padding: 16px;
+}
+
+.reservation-panel.is-loading {
+    pointer-events: none;
+    opacity: 0.72;
 }
 
 .reservation-heading {
@@ -943,7 +992,10 @@ body.dark-mode .gallery-thumb {
         width: 100%;
         align-items: flex-start;
         flex-direction: row;
+        flex-wrap: wrap;
         justify-content: flex-start;
+        overflow-x: visible;
+        white-space: normal;
     }
 
     .profile-menu {

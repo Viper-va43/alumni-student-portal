@@ -1,0 +1,5 @@
+Options -Indexes
+
+<FilesMatch "\.(exe|msi|bat|cmd|ps1|sh|com|scr|jar|zip|rar|7z|pdf|doc|docx|xls|xlsx|ppt|pptx)$">
+    Require all denied
+</FilesMatch>

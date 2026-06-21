@@ -36,6 +36,70 @@ function admin_dashboard_time_label($time) {
     return $timestamp ? date('g:i A', $timestamp) : trim((string) $time);
 }
 
+function admin_dashboard_place_stats($conn, $search = '') {
+    $search = trim((string) $search);
+    $whereSql = '';
+    $params = [];
+
+    if ($search !== '') {
+        $whereSql = "WHERE b.name LIKE ?
+            OR bl.location_name LIKE ?
+            OR bl.address LIKE ?
+            OR p.owner_name LIKE ?";
+        $needle = '%' . $search . '%';
+        $params = [$needle, $needle, $needle, $needle];
+    }
+
+    $sql = "SELECT bl.location_id,
+            b.business_id,
+            b.name AS business_name,
+            b.approval_status,
+            p.owner_name,
+            bl.location_name,
+            bl.address,
+            COALESCE(view_counts.total_views, 0) AS total_views,
+            COUNT(DISTINCT bk.id) AS reservation_count,
+            COUNT(DISTINCT CASE WHEN bk.status IN ('pending', 'confirmed') AND bk.date >= CURDATE() THEN bk.id END) AS upcoming_reservations,
+            COUNT(DISTINCT br.review_id) AS review_count,
+            COALESCE(AVG(br.rating), 0) AS average_rating
+        FROM business_locations bl
+        INNER JOIN businesses b ON b.business_id = bl.business_id
+        INNER JOIN partners p ON p.partner_id = b.partner_id
+        LEFT JOIN bookings bk ON bk.location_id = bl.location_id
+        LEFT JOIN business_reviews br ON br.location_id = bl.location_id
+        LEFT JOIN (
+            SELECT business_id, COUNT(*) AS total_views
+            FROM customer_place_visits
+            GROUP BY business_id
+        ) view_counts ON view_counts.business_id = b.business_id
+        {$whereSql}
+        GROUP BY bl.location_id, b.business_id, b.name, b.approval_status, p.owner_name, bl.location_name, bl.address, view_counts.total_views
+        ORDER BY reservation_count DESC, total_views DESC, b.name ASC";
+    $stmt = $conn->prepare($sql);
+
+    if (!$stmt) {
+        return [];
+    }
+
+    if ($params) {
+        $stmt->bind_param("ssss", $params[0], $params[1], $params[2], $params[3]);
+    }
+
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $rows = [];
+
+    if ($result) {
+        while ($row = $result->fetch_assoc()) {
+            $rows[] = $row;
+        }
+    }
+
+    return $rows;
+}
+
+$placeSearch = trim((string) ($_GET['place_search'] ?? ''));
+
 $stats = [
     'active_views' => admin_dashboard_scalar($conn, "SELECT COUNT(*) AS value FROM customer_place_visits WHERE viewed_at >= (NOW() - INTERVAL 15 MINUTE)"),
     'customers' => admin_dashboard_scalar($conn, "SELECT COUNT(*) AS value FROM customers"),
@@ -55,37 +119,16 @@ $recentReservations = admin_dashboard_rows($conn, "SELECT bk.id, bk.user_name, b
     INNER JOIN businesses b ON b.business_id = bl.business_id
     ORDER BY bk.date DESC, bk.time_slot DESC, bk.created_at DESC
     LIMIT 8");
-$placeStats = admin_dashboard_rows($conn, "SELECT bl.location_id,
-        b.business_id,
-        b.name AS business_name,
-        b.approval_status,
-        p.owner_name,
-        bl.location_name,
-        bl.address,
-        COALESCE(view_counts.total_views, 0) AS total_views,
-        COUNT(DISTINCT bk.id) AS reservation_count,
-        COUNT(DISTINCT CASE WHEN bk.status IN ('pending', 'confirmed') AND bk.date >= CURDATE() THEN bk.id END) AS upcoming_reservations,
-        COUNT(DISTINCT br.review_id) AS review_count,
-        COALESCE(AVG(br.rating), 0) AS average_rating
-    FROM business_locations bl
-    INNER JOIN businesses b ON b.business_id = bl.business_id
-    INNER JOIN partners p ON p.partner_id = b.partner_id
-    LEFT JOIN bookings bk ON bk.location_id = bl.location_id
-    LEFT JOIN business_reviews br ON br.location_id = bl.location_id
-    LEFT JOIN (
-        SELECT business_id, COUNT(*) AS total_views
-        FROM customer_place_visits
-        GROUP BY business_id
-    ) view_counts ON view_counts.business_id = b.business_id
-    GROUP BY bl.location_id, b.business_id, b.name, b.approval_status, p.owner_name, bl.location_name, bl.address, view_counts.total_views
-    ORDER BY reservation_count DESC, total_views DESC, b.name ASC");
+$placeStats = admin_dashboard_place_stats($conn, $placeSearch);
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Where2Go admin dashboard for monitoring customers, partners, businesses, reservations, reviews, and approvals.">
 <title>Where2Go | Admin Dashboard</title>
+<link rel="icon" type="image/png" href="../assets/images/where2go_transparent_clean.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
@@ -93,16 +136,16 @@ $placeStats = admin_dashboard_rows($conn, "SELECT bl.location_id,
 <link rel="stylesheet" href="../assets/css/account.css">
 <link rel="stylesheet" href="../assets/css/partner-portal.css">
 </head>
-<body class="light-mode">
+<body class="dark-mode">
 <header class="topbar">
     <div class="topbar-inner">
         <div class="topbar-left">
             <a class="brand-link" href="../Home.php" aria-label="Where2Go home">
-                <img src="../assets/images/where2go_transparent.png" alt="Where2Go logo" class="logo">
+                <img src="../assets/images/where2go_transparent_clean.png" alt="Where2Go logo" class="logo">
             </a>
             <button class="theme-toggle" id="theme-toggle" type="button">
-                <i data-lucide="sun-medium" id="theme-icon"></i>
-                <span id="theme-label">Light mode</span>
+                <i data-lucide="moon-star" id="theme-icon"></i>
+                <span id="theme-label">Dark mode</span>
             </button>
         </div>
 
@@ -198,6 +241,16 @@ $placeStats = admin_dashboard_rows($conn, "SELECT bl.location_id,
                 <p class="section-copy">Every partner location with views, reservations, reviews, and approval status.</p>
             </div>
         </div>
+        <form action="dashboard.php" method="GET" class="admin-place-search" style="margin-top:18px;">
+            <label class="field" for="place_search">
+                <span>Search by place</span>
+                <input id="place_search" type="search" name="place_search" value="<?php echo htmlspecialchars($placeSearch, ENT_QUOTES, 'UTF-8'); ?>" placeholder="Business, location, address, or partner">
+            </label>
+            <button class="primary-btn" type="submit"><i data-lucide="search"></i>Search</button>
+            <?php if ($placeSearch !== ''): ?>
+            <a class="secondary-btn" href="dashboard.php"><i data-lucide="x"></i>Clear</a>
+            <?php endif; ?>
+        </form>
         <?php if ($placeStats): ?>
         <div class="dashboard-list">
             <?php foreach ($placeStats as $place): ?>
@@ -227,7 +280,7 @@ $placeStats = admin_dashboard_rows($conn, "SELECT bl.location_id,
             <?php endforeach; ?>
         </div>
         <?php else: ?>
-        <div class="empty-block"><p>No partner locations have been submitted yet.</p></div>
+        <div class="empty-block"><p><?php echo $placeSearch !== '' ? 'No places matched that search.' : 'No partner locations have been submitted yet.'; ?></p></div>
         <?php endif; ?>
     </section>
 </main>

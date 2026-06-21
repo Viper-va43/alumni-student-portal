@@ -6,12 +6,13 @@
     const themeIcon = document.getElementById('theme-icon');
     const themeLabel = document.getElementById('theme-label');
     const introScreen = document.getElementById('intro-screen');
+    const introLogos = Array.from(document.querySelectorAll('.intro-logo'));
     const searchInput = document.getElementById('search-input');
     const searchButton = document.getElementById('search-button');
     const saveButtons = Array.from(document.querySelectorAll('[data-track-place]'));
     const visitedCount = document.getElementById('visited-count');
     const profileMenus = Array.from(document.querySelectorAll('[data-profile-menu]'));
-    const categoryCards = Array.from(document.querySelectorAll('[data-category-query]'));
+    const categoryCards = Array.from(document.querySelectorAll('[data-category-query], [data-category-catalog]'));
     const uiSelects = Array.from(document.querySelectorAll('select[data-ui-select]'));
     const catalogSelects = Array.from(document.querySelectorAll('[data-catalog-target]'));
     const chooseForm = document.querySelector('[data-choose-form]');
@@ -34,12 +35,26 @@
         'cairo': ['cairo'],
     };
     const activityMatchers = {
+        restaurant: /restaurant|dining|food|grill|antar|meals?/,
         restaurants: /restaurant|dining|food|grill|antar|meals?/,
+        cafe: /cafe|coffee|relaxed/,
         cafes: /cafe|coffee|relaxed/,
-        activities: /activity|active|kayak|paintball|archery|waves|target|outdoors/,
+        activity: /activity|active|kayak|paintball|archery|waves|target|outdoors|gaming/,
+        activities: /activity|active|kayak|paintball|archery|waves|target|outdoors|gaming/,
         entertainment: /entertainment|fun|cinema|mall|gaming|club|waterway|drive|point/,
         nightlife: /nightlife|rooftop|lounge|evening/,
         heritage: /heritage|museum|markets?|outdoors|viewpoint|pyramids?|sphinx|citadel|coptic|palace|tower|park|historic/,
+    };
+    const activityCatalogSlugs = {
+        restaurant: 'restaurant',
+        restaurants: 'restaurant',
+        cafe: 'cafe',
+        cafes: 'cafe',
+        activity: 'activity',
+        activities: 'activity',
+        entertainment: 'entertainment',
+        nightlife: 'nightlife',
+        heritage: 'heritage',
     };
     const eventMatchers = {
         food: /restaurant|dining|food|grill|cafe|meals?/,
@@ -59,6 +74,11 @@
         body.classList.toggle('light-mode', !isDark);
         themeIcon.setAttribute('data-lucide', isDark ? 'moon-star' : 'sun-medium');
         themeLabel.textContent = isDark ? 'Dark mode' : 'Light mode';
+        introLogos.forEach((logo) => {
+            logo.src = isDark
+                ? 'assets/images/where2go_transparent_clean.png'
+                : 'assets/images/where2go_transparent_white.png';
+        });
         lucide.createIcons();
     }
 
@@ -104,7 +124,7 @@
         window.setTimeout(() => {
             introScreen.classList.add('is-hidden');
             sessionStorage.setItem('where2go-home-intro', 'seen');
-        }, 1500);
+        }, 550);
     }
 
     // Close any open profile dropdown before another menu interaction happens.
@@ -281,9 +301,48 @@
 
     // Redirect the visitor into the shared search page with an optional query.
 
-    function goToSearch(query) {
+    function getCatalogChooserValue(target) {
+        const select = catalogSelects.find((item) => item.dataset.catalogTarget === target);
+
+        return select ? String(select.value || '').trim() : '';
+    }
+
+    function goToSearch(query, catalog, filters = {}) {
         const normalized = (query || '').trim();
-        window.location.href = normalized === '' ? 'search.php' : 'search.php?q=' + encodeURIComponent(normalized);
+        const normalizedCatalog = (catalog || '').trim();
+        const params = new URLSearchParams();
+
+        if (normalized !== '') {
+            params.set('q', normalized);
+        }
+
+        if (normalizedCatalog !== '') {
+            params.set('catalog', normalizedCatalog);
+        }
+
+        ['event', 'location', 'price'].forEach((key) => {
+            const value = String(filters[key] || '').trim();
+
+            if (value !== '') {
+                params.set(key, value);
+            }
+        });
+
+        const paramString = params.toString();
+        window.location.href = paramString === '' ? 'search.php' : 'search.php?' + paramString;
+    }
+
+    function goToSearchFromHero() {
+        const selectedActivity = getCatalogChooserValue('activity');
+        const selectedEvent = getCatalogChooserValue('event');
+        const selectedLocation = getCatalogChooserValue('location');
+        const selectedPrice = getCatalogChooserValue('price');
+
+        goToSearch(searchInput ? searchInput.value : '', selectedActivity, {
+            event: selectedEvent,
+            location: selectedLocation,
+            price: selectedPrice,
+        });
     }
 
     function escapeHtml(value) {
@@ -314,6 +373,8 @@
         return normalizeText([
             place.name,
             place.category,
+            place.catalog,
+            place.catalog_label,
             place.area,
             place.city,
             place.address,
@@ -362,6 +423,15 @@
         const searchable = getPlaceSearchText(place);
         const matcher = matchers[normalizedValue];
 
+        if (matchers === activityMatchers) {
+            const expectedCatalog = activityCatalogSlugs[normalizedValue] || normalizedValue;
+            const placeCatalog = normalizeText(place.catalog || '');
+
+            if (expectedCatalog && placeCatalog === expectedCatalog) {
+                return true;
+            }
+        }
+
         return matcher ? matcher.test(searchable) : searchable.includes(normalizedValue);
     }
 
@@ -370,6 +440,8 @@
         const searchable = normalizeText([
             place.name,
             place.category,
+            place.catalog,
+            place.catalog_label,
             place.description,
             place.area,
             place.address,
@@ -539,7 +611,7 @@
                     <span class="choose-picked-icon"><i data-lucide="${escapeHtml(place.icon || 'map-pinned')}"></i></span>
                     <div>
                         <h3>${escapeHtml(place.name || 'Where2Go place')}</h3>
-                        <p>${escapeHtml(place.category || 'Place')} - ${escapeHtml(place.address || place.area || 'Cairo')}</p>
+                        <p>${escapeHtml(place.catalog_label || place.category || 'Place')} - ${escapeHtml(place.address || place.area || 'Cairo')}</p>
                     </div>
                 </div>
                 <div class="choose-picked-meta">
@@ -752,7 +824,7 @@
 
     categoryCards.forEach((card) => {
         card.addEventListener('click', () => {
-            goToSearch(card.dataset.categoryQuery || '');
+            goToSearch(card.dataset.categoryQuery || '', card.dataset.categoryCatalog || '');
         });
     });
 
@@ -760,14 +832,14 @@
         searchInput.addEventListener('keydown', (event) => {
             if (event.key === 'Enter') {
                 event.preventDefault();
-                goToSearch(searchInput.value);
+                goToSearchFromHero();
             }
         });
     }
 
     if (searchButton) {
         searchButton.addEventListener('click', () => {
-            goToSearch(searchInput ? searchInput.value : '');
+            goToSearchFromHero();
         });
     }
 
@@ -777,7 +849,7 @@
     saveButtons.forEach((button) => {
         updateSaveButton(button, savedLookup.has(button.dataset.trackPlace));
     });
-    applyTheme(localStorage.getItem('where2go-theme') || 'light');
+    applyTheme(localStorage.getItem('where2go-theme') || 'dark');
     showIntro();
     setupProfileMenus();
     setupUiSelects();

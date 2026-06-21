@@ -226,7 +226,7 @@
     saveButtons.forEach((button) => {
         updateSaveButton(button, savedLookup.has(button.dataset.savePlace));
     });
-    applyTheme(localStorage.getItem('where2go-theme') || 'light');
+    applyTheme(localStorage.getItem('where2go-theme') || 'dark');
     setupProfileMenus();
     updateTopbarState();
     lucide.createIcons();

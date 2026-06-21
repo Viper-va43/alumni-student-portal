@@ -252,6 +252,17 @@
     color: #b84a39;
 }
 
+.status-pill.confirmed,
+.status-pill.completed {
+    background: var(--success-soft);
+    color: var(--success);
+}
+
+.status-pill.canceled {
+    background: rgba(166, 55, 41, 0.14);
+    color: #b84a39;
+}
+
 .dashboard-list,
 .approval-list {
     margin-top: 18px;
@@ -282,11 +293,22 @@
 }
 
 .approval-action-form,
+.admin-place-search,
 .review-history-grid,
 .review-scroll-shell,
 .review-scroll-list {
     display: grid;
     gap: 14px;
+}
+
+.admin-place-search {
+    grid-template-columns: minmax(220px, 1fr) auto auto;
+    align-items: end;
+}
+
+.reservation-action-row {
+    justify-content: flex-start;
+    margin-top: 14px;
 }
 
 .approval-action-form textarea {
@@ -389,6 +411,7 @@
     .grid-two,
     .grid-three,
     .inline-fields,
+    .admin-place-search,
     .review-history-grid,
     .qr-grid {
         grid-template-columns: 1fr;

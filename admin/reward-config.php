@@ -27,7 +27,9 @@ foreach ($rewardDefinitions as $definition) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Configure Where2Go reward rules, streaks, check-ins, and daily reward boxes from the admin panel.">
 <title>Where2Go | Reward Config</title>
+<link rel="icon" type="image/png" href="../assets/images/where2go_transparent_clean.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
@@ -36,16 +38,16 @@ foreach ($rewardDefinitions as $definition) {
 <link rel="stylesheet" href="../assets/css/partner-portal.css">
 <link rel="stylesheet" href="../assets/css/rewards.css">
 </head>
-<body class="light-mode">
+<body class="dark-mode">
 <header class="topbar">
     <div class="topbar-inner">
         <div class="topbar-left">
             <a class="brand-link" href="../Home.php" aria-label="Where2Go home">
-                <img src="../assets/images/where2go_transparent.png" alt="Where2Go logo" class="logo">
+                <img src="../assets/images/where2go_transparent_clean.png" alt="Where2Go logo" class="logo">
             </a>
             <button class="theme-toggle" id="theme-toggle" type="button">
-                <i data-lucide="sun-medium" id="theme-icon"></i>
-                <span id="theme-label">Light mode</span>
+                <i data-lucide="moon-star" id="theme-icon"></i>
+                <span id="theme-label">Dark mode</span>
             </button>
         </div>
 

@@ -1,19 +1,27 @@
-﻿<?php
+<?php
 
 /* -------------------------
    DATABASE CONNECTION
 ------------------------- */
 function db_connect() {
 
-    $host = "localhost";
-    $user = "root";
-    $password = "";
-    $database = "where2go";
+    $host = getenv('WHERE2GO_DB_HOST') ?: "localhost";
+    $user = getenv('WHERE2GO_DB_USER') ?: "root";
+    $password = getenv('WHERE2GO_DB_PASS') ?: "";
+    $database = getenv('WHERE2GO_DB_NAME') ?: "where2go";
+    $charset = getenv('WHERE2GO_DB_CHARSET') ?: "utf8mb4";
 
+    mysqli_report(MYSQLI_REPORT_OFF);
     $conn = new mysqli($host, $user, $password, $database);
 
     if ($conn->connect_error) {
-        die("Database connection failed: " . $conn->connect_error);
+        error_log('Where2Go database connection failed: ' . $conn->connect_error);
+        http_response_code(500);
+        exit("Database connection is temporarily unavailable.");
+    }
+
+    if (!$conn->set_charset($charset)) {
+        error_log('Where2Go database charset setup failed: ' . $conn->error);
     }
 
     return $conn;
@@ -27,7 +35,7 @@ function clean_input($data) {
 
     $data = trim($data);
     $data = stripslashes($data);
-    $data = htmlspecialchars($data);
+    $data = htmlspecialchars($data, ENT_QUOTES, 'UTF-8');
 
     return $data;
 }
@@ -59,6 +67,16 @@ function verify_password($input, $stored) {
 function start_session() {
 
     if(session_status() === PHP_SESSION_NONE) {
+        $secureCookie = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+
+        session_set_cookie_params([
+            'lifetime' => 0,
+            'path' => '/',
+            'secure' => $secureCookie,
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+
         session_start();
     }
 
@@ -115,6 +133,23 @@ function logout_user() {
 
     session_unset();
     session_destroy();
+
+    if (ini_get('session.use_cookies')) {
+        $params = session_get_cookie_params();
+        $cookieOptions = [
+            'expires' => time() - 42000,
+            'path' => $params['path'] ?? '/',
+            'secure' => (bool) ($params['secure'] ?? false),
+            'httponly' => true,
+            'samesite' => $params['samesite'] ?? 'Lax',
+        ];
+
+        if (!empty($params['domain'])) {
+            $cookieOptions['domain'] = $params['domain'];
+        }
+
+        setcookie(session_name(), '', $cookieOptions);
+    }
 
 }
 
@@ -1061,6 +1096,7 @@ function format_business_type_label($type, $custom_type = '') {
         'activity' => 'Activity',
         'entertainment' => 'Entertainment',
         'nightlife' => 'Nightlife',
+        'heritage' => 'Heritage & Culture',
         'other' => 'Other',
     ];
 
@@ -1082,10 +1118,41 @@ function map_business_type_icon($type) {
         'activity' => 'mountain-snow',
         'entertainment' => 'star',
         'nightlife' => 'music-4',
+        'heritage' => 'landmark',
         'other' => 'building-2',
     ];
 
     return $icons[$type] ?? 'building-2';
+
+}
+
+
+/* -------------------------
+   BUSINESS TYPE SCHEMA
+------------------------- */
+function ensure_business_type_catalog_values($conn = null) {
+
+    static $checked = false;
+
+    if ($checked) {
+        return;
+    }
+
+    $conn = $conn ?: db_connect();
+
+    if (!$conn) {
+        return;
+    }
+
+    $result = $conn->query("SHOW COLUMNS FROM businesses LIKE 'type'");
+    $row = $result ? $result->fetch_assoc() : null;
+    $columnType = strtolower((string) ($row['Type'] ?? ''));
+
+    if ($columnType !== '' && strpos($columnType, "'heritage'") === false) {
+        $conn->query("ALTER TABLE businesses MODIFY type ENUM('restaurant','cafe','activity','entertainment','nightlife','heritage','other') NOT NULL DEFAULT 'restaurant'");
+    }
+
+    $checked = true;
 
 }
 
@@ -1210,9 +1277,14 @@ function get_business_locations($business_id) {
 function get_location_hours_map($location_id) {
 
     $location_id = (int) $location_id;
+    static $cache = [];
 
     if ($location_id <= 0) {
         return [];
+    }
+
+    if (isset($cache[$location_id])) {
+        return $cache[$location_id];
     }
 
     $conn = db_connect();
@@ -1235,7 +1307,9 @@ function get_location_hours_map($location_id) {
         $hours[(int) $row['day_of_week']] = $row;
     }
 
-    return $hours;
+    $cache[$location_id] = $hours;
+
+    return $cache[$location_id];
 
 }
 
@@ -1254,8 +1328,9 @@ function get_location_hours_for_date($location_id, $date) {
 
     $dayOfWeek = (int) date('w', $timestamp);
     $hoursMap = get_location_hours_map($location_id);
+    $defaultRows = get_default_hours_rows();
 
-    return $hoursMap[$dayOfWeek] ?? null;
+    return $hoursMap[$dayOfWeek] ?? ($defaultRows[$dayOfWeek] ?? null);
 
 }
 
@@ -1612,8 +1687,10 @@ function get_partner_dashboard_summary($partner_id) {
                                          INNER JOIN business_locations bl ON bl.location_id = bk.location_id
                                          INNER JOIN businesses b ON b.business_id = bl.business_id
                                          WHERE b.partner_id = ?
-                                           AND bk.status IN ('pending', 'confirmed')
-                                           AND bk.date >= CURDATE()",
+                                           AND (
+                                               bk.status = 'pending'
+                                               OR (bk.status = 'confirmed' AND bk.date >= CURDATE())
+                                           )",
         'active_offer_count' => "SELECT COUNT(*) AS value
                                  FROM business_offers bo
                                  INNER JOIN businesses b ON b.business_id = bo.business_id
@@ -1678,9 +1755,11 @@ function get_partner_upcoming_reservations($partner_id, $limit = 8) {
             INNER JOIN business_locations bl ON bl.location_id = bk.location_id
             INNER JOIN businesses b ON b.business_id = bl.business_id
             WHERE b.partner_id = ?
-              AND bk.status IN ('pending', 'confirmed')
-              AND bk.date >= CURDATE()
-            ORDER BY bk.date ASC, bk.time_slot ASC
+              AND (
+                  bk.status = 'pending'
+                  OR (bk.status = 'confirmed' AND bk.date >= CURDATE())
+              )
+            ORDER BY CASE WHEN bk.status = 'pending' THEN 0 ELSE 1 END, bk.date ASC, bk.time_slot ASC
             LIMIT " . $limit;
     $stmt = $conn->prepare($sql);
 
@@ -1698,6 +1777,69 @@ function get_partner_upcoming_reservations($partner_id, $limit = 8) {
     }
 
     return $reservations;
+
+}
+
+
+/* -------------------------
+   UPDATE PARTNER BOOKING STATUS
+------------------------- */
+function update_partner_booking_status($partner_id, $booking_id, $status) {
+
+    $partner_id = (int) $partner_id;
+    $booking_id = (int) $booking_id;
+    $status = trim((string) $status);
+    $allowedStatuses = ['confirmed', 'canceled', 'completed'];
+
+    if ($partner_id <= 0 || $booking_id <= 0 || !in_array($status, $allowedStatuses, true)) {
+        return ['ok' => false, 'message' => 'Choose a valid reservation action.'];
+    }
+
+    $conn = db_connect();
+    $lookupSql = "SELECT bk.id, bk.status
+            FROM bookings bk
+            INNER JOIN business_locations bl ON bl.location_id = bk.location_id
+            INNER JOIN businesses b ON b.business_id = bl.business_id
+            WHERE bk.id = ?
+              AND b.partner_id = ?
+            LIMIT 1";
+    $lookupStmt = $conn->prepare($lookupSql);
+
+    if (!$lookupStmt) {
+        return ['ok' => false, 'message' => 'The reservation could not be checked right now.'];
+    }
+
+    $lookupStmt->bind_param("ii", $booking_id, $partner_id);
+    $lookupStmt->execute();
+    $result = $lookupStmt->get_result();
+    $booking = $result ? $result->fetch_assoc() : null;
+
+    if (!$booking) {
+        return ['ok' => false, 'message' => 'This reservation does not belong to your partner account.'];
+    }
+
+    if ((string) ($booking['status'] ?? '') === $status) {
+        return ['ok' => true, 'message' => 'The reservation is already ' . $status . '.'];
+    }
+
+    $updateStmt = $conn->prepare("UPDATE bookings SET status = ? WHERE id = ?");
+
+    if (!$updateStmt) {
+        return ['ok' => false, 'message' => 'The reservation update could not be prepared right now.'];
+    }
+
+    $updateStmt->bind_param("si", $status, $booking_id);
+
+    if (!$updateStmt->execute()) {
+        return ['ok' => false, 'message' => 'The reservation could not be updated right now.'];
+    }
+
+    return [
+        'ok' => true,
+        'message' => $status === 'confirmed'
+            ? 'Reservation approved.'
+            : ($status === 'canceled' ? 'Reservation canceled.' : 'Reservation marked as completed.'),
+    ];
 
 }
 
@@ -2122,8 +2264,8 @@ function get_default_hours_rows() {
         $rows[$day] = [
             'day_of_week' => $day,
             'is_closed' => 0,
-            'open_time' => '',
-            'close_time' => '',
+            'open_time' => '10:00',
+            'close_time' => '23:00',
         ];
     }
 
@@ -2322,13 +2464,55 @@ function get_partner_business_form_data($partner_id, $business_id = 0) {
 /* -------------------------
    NORMALIZE URL LIST
 ------------------------- */
+function normalize_safe_url_input($value, $allow_relative = true) {
+
+    $value = trim((string) $value);
+
+    if ($value === '') {
+        return '';
+    }
+
+    if (preg_match('/[\x00-\x1F\x7F\s]/', $value) || strpos($value, '\\') !== false) {
+        return '';
+    }
+
+    if (filter_var($value, FILTER_VALIDATE_URL)) {
+        $scheme = strtolower((string) parse_url($value, PHP_URL_SCHEME));
+
+        return in_array($scheme, ['http', 'https'], true) ? $value : '';
+    }
+
+    if ($allow_relative && !preg_match('/^[a-z][a-z0-9+.-]*:/i', $value) && strpos($value, '//') !== 0) {
+        return $value;
+    }
+
+    return '';
+
+}
+
+
+function is_valid_iso_date_input($value) {
+
+    $value = trim((string) $value);
+
+    if ($value === '') {
+        return true;
+    }
+
+    $date = DateTime::createFromFormat('Y-m-d', $value);
+
+    return $date && $date->format('Y-m-d') === $value;
+
+}
+
+
 function normalize_url_input_list($values) {
 
     $values = is_array($values) ? $values : [];
     $normalized = [];
 
     foreach ($values as $value) {
-        $value = trim((string) $value);
+        $value = normalize_safe_url_input($value);
 
         if ($value !== '') {
             $normalized[] = $value;
@@ -2358,17 +2542,55 @@ function save_partner_business_submission($partner_id, $data, $business_id = 0) 
     $rules = trim((string) ($data['rules'] ?? ''));
     $type = trim((string) ($data['type'] ?? 'restaurant'));
     $customType = trim((string) ($data['custom_type'] ?? ''));
-    $logoUrl = trim((string) ($data['logo_url'] ?? ''));
-    $website = trim((string) ($data['website'] ?? ''));
+    $rawLogoUrl = trim((string) ($data['logo_url'] ?? ''));
+    $rawWebsite = trim((string) ($data['website'] ?? ''));
+    $logoUrl = normalize_safe_url_input($rawLogoUrl);
+    $website = normalize_safe_url_input($rawWebsite, false);
     $settings = get_where2go_rewards_program_settings();
     $locations = normalize_partner_locations_input($data['locations'] ?? [], $data);
     $photoUrls = array_slice(normalize_url_input_list($data['photo_urls'] ?? []), 0, max(1, (int) ($settings['max_business_photos'] ?? 6)));
     $menuItems = is_array($data['menus'] ?? null) ? $data['menus'] : [];
     $offerItems = is_array($data['offers'] ?? null) ? $data['offers'] : [];
-    $allowedTypes = ['restaurant', 'cafe', 'activity', 'entertainment', 'nightlife', 'other'];
+    $allowedTypes = ['restaurant', 'cafe', 'activity', 'entertainment', 'nightlife', 'heritage', 'other'];
 
     if ($name === '' || !$locations) {
         return ['ok' => false, 'message' => 'Business name and at least one location are required.'];
+    }
+
+    if (($rawLogoUrl !== '' && $logoUrl === '') || ($rawWebsite !== '' && $website === '')) {
+        return ['ok' => false, 'message' => 'Website links must use http or https. Logo links may also use an existing site-relative asset path.'];
+    }
+
+    foreach ((is_array($data['photo_urls'] ?? null) ? $data['photo_urls'] : []) as $photoUrl) {
+        if (trim((string) $photoUrl) !== '' && normalize_safe_url_input($photoUrl) === '') {
+            return ['ok' => false, 'message' => 'Photo links must use http, https, or an existing site-relative asset path.'];
+        }
+    }
+
+    foreach ($menuItems as $menuItem) {
+        $menuUrl = trim((string) ($menuItem['file_url'] ?? ''));
+
+        if ($menuUrl !== '' && normalize_safe_url_input($menuUrl) === '') {
+            return ['ok' => false, 'message' => 'Menu links must use http, https, or an existing site-relative asset path.'];
+        }
+    }
+
+    foreach ($offerItems as $offerItem) {
+        $offerDiscount = trim((string) ($offerItem['discount'] ?? ''));
+        $offerStart = trim((string) ($offerItem['start_date'] ?? ''));
+        $offerEnd = trim((string) ($offerItem['end_date'] ?? ''));
+
+        if ($offerDiscount !== '' && (!is_numeric($offerDiscount) || (float) $offerDiscount < 0 || (float) $offerDiscount > 100)) {
+            return ['ok' => false, 'message' => 'Offer discounts must be between 0 and 100 percent.'];
+        }
+
+        if (!is_valid_iso_date_input($offerStart) || !is_valid_iso_date_input($offerEnd)) {
+            return ['ok' => false, 'message' => 'Offer dates must use valid calendar dates.'];
+        }
+
+        if ($offerStart !== '' && $offerEnd !== '' && strtotime($offerEnd) < strtotime($offerStart)) {
+            return ['ok' => false, 'message' => 'Offer end date cannot be before the start date.'];
+        }
     }
 
     if (!in_array($type, $allowedTypes, true)) {
@@ -2386,6 +2608,7 @@ function save_partner_business_submission($partner_id, $data, $business_id = 0) 
     ensure_where2go_rewards_schema();
 
     $conn = db_connect();
+    ensure_business_type_catalog_values($conn);
     $currentBusiness = $business_id > 0 ? get_business_by_id($business_id) : null;
     $preserveApproval = $currentBusiness && trim((string) ($currentBusiness['approval_status'] ?? '')) === 'approved';
 
@@ -2573,7 +2796,7 @@ function save_partner_business_submission($partner_id, $data, $business_id = 0) 
 
         foreach ($menuItems as $menuItem) {
             $menuTitle = trim((string) ($menuItem['title'] ?? ''));
-            $menuUrl = trim((string) ($menuItem['file_url'] ?? ''));
+            $menuUrl = normalize_safe_url_input($menuItem['file_url'] ?? '');
 
             if ($menuTitle === '' && $menuUrl === '') {
                 continue;
@@ -2825,6 +3048,37 @@ function normalize_booking_time_slot($time) {
 
 
 /* -------------------------
+   BOOKING SLOT FUTURE CHECK
+------------------------- */
+function is_booking_slot_in_future($date, $time, $location_id = 0) {
+
+    $time = normalize_booking_time_slot($time);
+    $slotTimestamp = $time !== '' ? strtotime((string) $date . ' ' . $time) : false;
+
+    if ($slotTimestamp === false) {
+        return false;
+    }
+
+    $location_id = (int) $location_id;
+
+    if ($location_id > 0) {
+        $hours = get_location_hours_for_date($location_id, $date);
+        $openTime = trim((string) ($hours['open_time'] ?? ''));
+        $closeTime = trim((string) ($hours['close_time'] ?? ''));
+        $openTimestamp = $openTime !== '' ? strtotime((string) $date . ' ' . $openTime) : false;
+        $closeTimestamp = $closeTime !== '' ? strtotime((string) $date . ' ' . $closeTime) : false;
+
+        if ($openTimestamp && $closeTimestamp && $closeTimestamp <= $openTimestamp && $slotTimestamp < $openTimestamp) {
+            $slotTimestamp = strtotime('+1 day', $slotTimestamp);
+        }
+    }
+
+    return $slotTimestamp > time();
+
+}
+
+
+/* -------------------------
    TABLES NEEDED
 ------------------------- */
 function get_required_table_count($guests = 1) {
@@ -2859,7 +3113,23 @@ function is_location_open_for_booking($location_id, $date, $time) {
         return false;
     }
 
-    return $time >= $openTime && $time < $closeTime;
+    $openTimestamp = strtotime($date . ' ' . $openTime);
+    $closeTimestamp = strtotime($date . ' ' . $closeTime);
+    $slotTimestamp = strtotime($date . ' ' . $time);
+
+    if (!$openTimestamp || !$closeTimestamp || !$slotTimestamp) {
+        return false;
+    }
+
+    if ($closeTimestamp <= $openTimestamp) {
+        $closeTimestamp = strtotime('+1 day', $closeTimestamp);
+
+        if ($slotTimestamp < $openTimestamp) {
+            $slotTimestamp = strtotime('+1 day', $slotTimestamp);
+        }
+    }
+
+    return $slotTimestamp >= $openTimestamp && $slotTimestamp < $closeTimestamp;
 
 }
 
@@ -2903,6 +3173,52 @@ function get_location_booking_slot_usage($location_id, $date, $time) {
 
 
 /* -------------------------
+   SLOT BOOKING USAGE MAP
+------------------------- */
+function get_location_booking_slot_usage_map($location_id, $date) {
+
+    $location_id = (int) $location_id;
+
+    if ($location_id <= 0 || !strtotime((string) $date)) {
+        return [];
+    }
+
+    $conn = db_connect();
+    $sql = "SELECT time_slot,
+                   COALESCE(SUM(CASE
+                        WHEN guests IS NULL OR guests < 1 THEN 1
+                        ELSE CEIL(guests / 4)
+                    END), 0) AS reserved_units
+            FROM bookings
+            WHERE location_id = ?
+              AND date = ?
+              AND status IN ('pending', 'confirmed')
+            GROUP BY time_slot";
+    $stmt = $conn->prepare($sql);
+
+    if (!$stmt) {
+        return [];
+    }
+
+    $stmt->bind_param("is", $location_id, $date);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $usage = [];
+
+    while ($row = $result->fetch_assoc()) {
+        $time = normalize_booking_time_slot($row['time_slot'] ?? '');
+
+        if ($time !== '') {
+            $usage[$time] = (int) ($row['reserved_units'] ?? 0);
+        }
+    }
+
+    return $usage;
+
+}
+
+
+/* -------------------------
    SLOT AVAILABILITY
 ------------------------- */
 function is_booking_slot_available($location_id, $date, $time, $guests = 1) {
@@ -2916,6 +3232,10 @@ function is_booking_slot_available($location_id, $date, $time, $guests = 1) {
     }
 
     if (!is_location_open_for_booking($location_id, $date, $time)) {
+        return false;
+    }
+
+    if (!is_booking_slot_in_future($date, $time, $location_id)) {
         return false;
     }
 
@@ -2940,9 +3260,10 @@ function get_available_booking_slots($location_id, $date, $slot_minutes = 60, $g
     $location_id = (int) $location_id;
     $slot_minutes = max(15, (int) $slot_minutes);
     $guests = max(1, (int) $guests);
+    $location = get_location_by_id($location_id);
     $hours = get_location_hours_for_date($location_id, $date);
 
-    if (!$hours || (int) ($hours['is_closed'] ?? 0) === 1) {
+    if (!$location || (int) ($location['has_reservations'] ?? 0) !== 1 || !$hours || (int) ($hours['is_closed'] ?? 0) === 1) {
         return [];
     }
 
@@ -2957,15 +3278,28 @@ function get_available_booking_slots($location_id, $date, $slot_minutes = 60, $g
     $current = strtotime($date . ' ' . $openTime);
     $end = strtotime($date . ' ' . $closeTime);
 
-    if (!$current || !$end || $current >= $end) {
+    if (!$current || !$end) {
+        return [];
+    }
+
+    if ($end <= $current) {
+        $end = strtotime('+1 day', $end);
+    }
+
+    $capacity = max(0, (int) ($location['capacity_per_hour'] ?? 0));
+    $requiredTables = get_required_table_count($guests);
+    $usageMap = get_location_booking_slot_usage_map($location_id, $date);
+
+    if ($capacity <= 0) {
         return [];
     }
 
     while ($current < $end) {
         $time = date('H:i:s', $current);
+        $reservedUnits = (int) ($usageMap[$time] ?? 0);
         $slots[] = [
             'time' => $time,
-            'available' => is_booking_slot_available($location_id, $date, $time, $guests),
+            'available' => $current > time() && ($reservedUnits + $requiredTables) <= $capacity,
         ];
         $current = strtotime('+' . $slot_minutes . ' minutes', $current);
     }

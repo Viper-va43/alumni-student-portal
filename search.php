@@ -14,14 +14,199 @@ $customerId = (int) ($_SESSION['customer_id'] ?? 0);
 $profilePhoto = $loggedIn ? get_profile_photo_web_path($customerId) : null;
 $visitedPlaceIds = get_visited_place_ids();
 $visitedLookup = array_flip($visitedPlaceIds);
-$query = trim($_GET['q'] ?? '');
-$searchResults = get_discovery_places($query);
+$query = trim($_GET['q'] ?? ($_GET['query'] ?? ''));
+$activeCatalog = get_place_catalog_slug($_GET['catalog'] ?? '');
+$activeEvent = normalize_search_filter_choice($_GET['event'] ?? '', ['food', 'friends', 'family', 'date', 'active', 'culture', 'views']);
+$activeLocation = trim((string) ($_GET['location'] ?? ''));
+$activePrice = normalize_search_filter_choice($_GET['price'] ?? '', ['100', '200', '300']);
+$queryCatalog = get_primary_place_catalog_slug($query);
+
+if ($activeCatalog === '' && $queryCatalog !== '') {
+    $activeCatalog = $queryCatalog;
+}
+
+$effectiveQuery = $queryCatalog !== '' && $activeCatalog === $queryCatalog ? '' : $query;
+$searchResults = get_discovery_places($effectiveQuery, null, $activeCatalog);
+$searchResults = array_values(array_filter($searchResults, function ($place) use ($activeEvent, $activeLocation, $activePrice) {
+    return search_place_matches_extra_filters($place, $activeEvent, $activeLocation, $activePrice);
+}));
+$activeCatalogLabel = $activeCatalog !== '' ? get_place_catalog_label($activeCatalog) : '';
+$activeFilterLabels = build_active_search_filter_labels($activeEvent, $activeLocation, $activePrice);
 $catalogCount = count(array_filter($searchResults, function ($place) {
     return ($place['source'] ?? '') === 'catalog';
 }));
 $businessCount = count(array_filter($searchResults, function ($place) {
     return ($place['source'] ?? '') === 'business';
 }));
+
+function normalize_search_filter_choice($value, $allowedValues) {
+    $value = strtolower(trim((string) $value));
+
+    return in_array($value, $allowedValues, true) ? $value : '';
+}
+
+function build_search_filter_text($place) {
+    $place = is_array($place) ? $place : [];
+
+    return normalize_place_catalog_token(implode(' ', array_filter([
+        $place['name'] ?? '',
+        $place['category'] ?? '',
+        $place['catalog'] ?? '',
+        $place['catalog_label'] ?? '',
+        $place['area'] ?? '',
+        $place['city'] ?? '',
+        $place['address'] ?? '',
+        $place['description'] ?? '',
+        $place['search_blob'] ?? '',
+    ])));
+}
+
+function search_place_matches_location_filter($place, $location) {
+    $location = normalize_place_catalog_token($location);
+
+    if ($location === '') {
+        return true;
+    }
+
+    $aliases = [
+        '5th settlement' => ['5th settlement', 'fifth settlement', 'new cairo'],
+        '1st settlement' => ['1st settlement', 'first settlement', 'new cairo'],
+        'al rehab' => ['al rehab', 'rehab', 'new cairo'],
+        'el shorouk' => ['el shorouk', 'shorouk'],
+        'new cairo' => ['new cairo', 'fifth settlement', '5th settlement', 'first settlement', '1st settlement'],
+        'downtown' => ['downtown', 'abdeen', 'azbakeya', 'cairo'],
+        'islamic cairo' => ['islamic cairo', 'el mosky', 'al wayli', 'cairo'],
+        'coptic cairo' => ['coptic cairo', 'old cairo', 'cairo'],
+        'cairo' => ['cairo'],
+    ];
+
+    $haystack = build_search_filter_text($place);
+    $needles = $aliases[$location] ?? [$location];
+
+    foreach ($needles as $needle) {
+        $needle = normalize_place_catalog_token($needle);
+
+        if ($needle !== '' && strpos($haystack, $needle) !== false) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function search_place_matches_event_filter($place, $event) {
+    $event = normalize_search_filter_choice($event, ['food', 'friends', 'family', 'date', 'active', 'culture', 'views']);
+
+    if ($event === '') {
+        return true;
+    }
+
+    $patterns = [
+        'food' => '/restaurant|dining|food|grill|cafe|meal/i',
+        'friends' => '/group|mall|entertainment|activity|nightlife|kayak|paintball|archery|club|gaming|hangout/i',
+        'family' => '/park|museum|heritage|mall|citadel|pyramids?|sphinx|coptic|palace|outdoor/i',
+        'date' => '/rooftop|nile|view|sunset|fine dining|zamalek|palace|tower|garden|polished/i',
+        'active' => '/kayak|paintball|archery|activity|outdoor|park|walking|active/i',
+        'culture' => '/museum|heritage|market|citadel|coptic|pyramids?|sphinx|palace|old cairo|historic|artifact/i',
+        'views' => '/tower|view|views|rooftop|nile|park|skyline|panoramic/i',
+    ];
+
+    return preg_match($patterns[$event], build_search_filter_text($place)) === 1;
+}
+
+function search_place_matches_price_filter($place, $price) {
+    $price = normalize_search_filter_choice($price, ['100', '200', '300']);
+
+    if ($price === '') {
+        return true;
+    }
+
+    if ($price === '300') {
+        return true;
+    }
+
+    $priceRange = strtolower((string) ($place['price_range'] ?? ''));
+    $dollarCount = substr_count($priceRange, '$');
+
+    if ($dollarCount <= 0) {
+        return false;
+    }
+
+    if ($price === '100') {
+        return $dollarCount === 1;
+    }
+
+    return $dollarCount === 2;
+}
+
+function search_place_matches_extra_filters($place, $event, $location, $price) {
+    return search_place_matches_location_filter($place, $location)
+        && search_place_matches_event_filter($place, $event)
+        && search_place_matches_price_filter($place, $price);
+}
+
+function build_active_search_filter_labels($event, $location, $price) {
+    $labels = [];
+    $eventLabels = [
+        'food' => 'Food plan',
+        'friends' => 'Friends hangout',
+        'family' => 'Family outing',
+        'date' => 'Date plan',
+        'active' => 'Active day',
+        'culture' => 'Culture walk',
+        'views' => 'Views',
+    ];
+    $priceLabels = [
+        '100' => '50-100 EGP',
+        '200' => '100-200 EGP',
+        '300' => '200+ EGP',
+    ];
+
+    if (isset($eventLabels[$event])) {
+        $labels[] = $eventLabels[$event];
+    }
+
+    if (trim((string) $location) !== '') {
+        $labels[] = trim((string) $location);
+    }
+
+    if (isset($priceLabels[$price])) {
+        $labels[] = $priceLabels[$price];
+    }
+
+    return $labels;
+}
+
+function build_search_page_url($query = '', $catalog = '', $event = '', $location = '', $price = '') {
+    $params = [];
+    $query = trim((string) $query);
+    $catalog = get_place_catalog_slug($catalog);
+    $event = normalize_search_filter_choice($event, ['food', 'friends', 'family', 'date', 'active', 'culture', 'views']);
+    $location = trim((string) $location);
+    $price = normalize_search_filter_choice($price, ['100', '200', '300']);
+
+    if ($query !== '') {
+        $params['q'] = $query;
+    }
+
+    if ($catalog !== '') {
+        $params['catalog'] = $catalog;
+    }
+
+    if ($event !== '') {
+        $params['event'] = $event;
+    }
+
+    if ($location !== '') {
+        $params['location'] = $location;
+    }
+
+    if ($price !== '') {
+        $params['price'] = $price;
+    }
+
+    return 'search.php' . ($params ? '?' . http_build_query($params) : '');
+}
 
 // Render one search result card with save metadata and the destination detail URL.
 function render_search_result_card($place, $loggedIn, $visitedLookup) {
@@ -30,6 +215,9 @@ function render_search_result_card($place, $loggedIn, $visitedLookup) {
     $source = (string) ($place['source'] ?? 'catalog');
     $isSaved = $placeId !== '' && isset($visitedLookup[$placeId]);
     $detailUrl = (string) ($place['detail_url'] ?? 'search.php');
+    $catalogLabel = trim((string) ($place['catalog_label'] ?? ($place['category'] ?? 'Place')));
+    $catalogIcon = trim((string) ($place['catalog_icon'] ?? 'layers-3'));
+    $categoryLabel = trim((string) ($place['category'] ?? ''));
     $payload = [];
 
     if ($source === 'business') {
@@ -61,7 +249,10 @@ function render_search_result_card($place, $loggedIn, $visitedLookup) {
             <div class="result-subtitle"><?php echo htmlspecialchars((string) ($place['address'] ?? 'Cairo, Egypt'), ENT_QUOTES, 'UTF-8'); ?></div>
         </div>
         <div class="result-tags">
-            <span class="tag"><i data-lucide="layers-3" style="width:14px;height:14px;"></i><?php echo htmlspecialchars((string) ($place['category'] ?? 'Place'), ENT_QUOTES, 'UTF-8'); ?></span>
+            <span class="tag"><i data-lucide="<?php echo htmlspecialchars($catalogIcon, ENT_QUOTES, 'UTF-8'); ?>" style="width:14px;height:14px;"></i><?php echo htmlspecialchars($catalogLabel !== '' ? $catalogLabel : 'Place', ENT_QUOTES, 'UTF-8'); ?></span>
+            <?php if ($categoryLabel !== '' && strcasecmp($categoryLabel, $catalogLabel) !== 0): ?>
+            <span class="tag"><i data-lucide="layers-3" style="width:14px;height:14px;"></i><?php echo htmlspecialchars($categoryLabel, ENT_QUOTES, 'UTF-8'); ?></span>
+            <?php endif; ?>
             <span class="tag"><i data-lucide="<?php echo $source === 'business' ? 'badge-check' : 'sparkles'; ?>" style="width:14px;height:14px;"></i><?php echo htmlspecialchars($source === 'business' ? 'Approved partner' : 'Original pick', ENT_QUOTES, 'UTF-8'); ?></span>
             <span class="tag"><i data-lucide="star" style="width:14px;height:14px;"></i><?php echo htmlspecialchars((string) ($place['rating'] ?? 'Featured'), ENT_QUOTES, 'UTF-8'); ?><?php echo !empty($place['reviews']) ? ' (' . (int) $place['reviews'] . ')' : ''; ?></span>
             <span class="tag"><i data-lucide="wallet" style="width:14px;height:14px;"></i><?php echo htmlspecialchars((string) ($place['price_range'] ?? 'See details'), ENT_QUOTES, 'UTF-8'); ?></span>
@@ -94,30 +285,32 @@ function render_search_result_card($place, $loggedIn, $visitedLookup) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Search Where2Go for Cairo restaurants, cafes, nightlife, entertainment, activities, and partner places.">
 <title>Where2Go | Search</title>
+<link rel="icon" type="image/png" href="assets/images/where2go_transparent_clean.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest"></script>
-<link rel="stylesheet" href="assets/css/discover.css?v=20260502-reservation-layout-1">
+<link rel="stylesheet" href="assets/css/discover.css?v=20260513-catalog-filters-1">
 </head>
-<body class="light-mode">
+<body class="dark-mode">
 <!-- Search page header with navigation, account access, and the theme toggle. -->
 <header class="topbar">
     <div class="topbar-inner">
         <div class="topbar-left">
             <a class="brand-link" href="Home.php" aria-label="Where2Go home">
-                <img src="assets/images/where2go_transparent.png" alt="Where2Go logo" class="logo">
+                <img src="assets/images/where2go_transparent_clean.png" alt="Where2Go logo" class="logo">
             </a>
             <button class="theme-toggle" id="theme-toggle" type="button">
-                <i data-lucide="sun-medium" id="theme-icon"></i>
-                <span id="theme-label">Light mode</span>
+                <i data-lucide="moon-star" id="theme-icon"></i>
+                <span id="theme-label">Dark mode</span>
             </button>
         </div>
 
         <nav class="topbar-right" aria-label="Search navigation">
             <a class="nav-link" href="Home.php">Home</a>
-            <a class="nav-link is-active" href="search.php<?php echo $query !== '' ? '?q=' . rawurlencode($query) : ''; ?>">Search</a>
+            <a class="nav-link is-active" href="<?php echo htmlspecialchars(build_search_page_url($effectiveQuery, $activeCatalog, $activeEvent, $activeLocation, $activePrice), ENT_QUOTES, 'UTF-8'); ?>">Search</a>
             <a class="nav-link" href="about.php">About</a>
             <?php if ($adminLoggedIn): ?>
             <a class="nav-link" href="Home.php#partners">Partners</a>
@@ -161,21 +354,46 @@ function render_search_result_card($place, $loggedIn, $visitedLookup) {
         <form class="search-form" action="search.php" method="GET">
             <i data-lucide="search" style="color:#8b6b57;"></i>
             <input id="search-input" type="text" name="q" value="<?php echo htmlspecialchars($query, ENT_QUOTES, 'UTF-8'); ?>" placeholder="Try restaurant, cafe, nightlife, entertainment, or a place name">
+            <?php if ($activeCatalog !== ''): ?>
+            <input type="hidden" name="catalog" value="<?php echo htmlspecialchars($activeCatalog, ENT_QUOTES, 'UTF-8'); ?>">
+            <?php endif; ?>
+            <?php if ($activeEvent !== ''): ?>
+            <input type="hidden" name="event" value="<?php echo htmlspecialchars($activeEvent, ENT_QUOTES, 'UTF-8'); ?>">
+            <?php endif; ?>
+            <?php if ($activeLocation !== ''): ?>
+            <input type="hidden" name="location" value="<?php echo htmlspecialchars($activeLocation, ENT_QUOTES, 'UTF-8'); ?>">
+            <?php endif; ?>
+            <?php if ($activePrice !== ''): ?>
+            <input type="hidden" name="price" value="<?php echo htmlspecialchars($activePrice, ENT_QUOTES, 'UTF-8'); ?>">
+            <?php endif; ?>
             <button type="submit" aria-label="Search places"><i data-lucide="arrow-right"></i></button>
         </form>
         <div class="quick-pills" style="margin-top:16px;">
-            <a class="quick-pill" href="search.php?q=restaurant"><i data-lucide="utensils-crossed"></i>Restaurants</a>
-            <a class="quick-pill" href="search.php?q=cafe"><i data-lucide="coffee"></i>Cafes</a>
-            <a class="quick-pill" href="search.php?q=nightlife"><i data-lucide="music-4"></i>Nightlife</a>
-            <a class="quick-pill" href="search.php?q=entertainment"><i data-lucide="star"></i>Entertainment</a>
-            <a class="quick-pill" href="search.php?q=activity"><i data-lucide="mountain-snow"></i>Activities</a>
+            <a class="quick-pill<?php echo $activeCatalog === 'restaurant' ? ' is-active' : ''; ?>" href="search.php?catalog=restaurant"><i data-lucide="utensils-crossed"></i>Restaurants</a>
+            <a class="quick-pill<?php echo $activeCatalog === 'cafe' ? ' is-active' : ''; ?>" href="search.php?catalog=cafe"><i data-lucide="coffee"></i>Cafes</a>
+            <a class="quick-pill<?php echo $activeCatalog === 'activity' ? ' is-active' : ''; ?>" href="search.php?catalog=activity"><i data-lucide="mountain-snow"></i>Activities</a>
+            <a class="quick-pill<?php echo $activeCatalog === 'entertainment' ? ' is-active' : ''; ?>" href="search.php?catalog=entertainment"><i data-lucide="star"></i>Entertainment</a>
+            <a class="quick-pill<?php echo $activeCatalog === 'nightlife' ? ' is-active' : ''; ?>" href="search.php?catalog=nightlife"><i data-lucide="music-4"></i>Nightlife</a>
+            <a class="quick-pill<?php echo $activeCatalog === 'heritage' ? ' is-active' : ''; ?>" href="search.php?catalog=heritage"><i data-lucide="landmark"></i>Heritage</a>
         </div>
     </section>
 
     <div class="status-row">
         <div>
-            <h2 class="section-title" style="margin:0 0 6px;"><?php echo $query !== '' ? 'Results for "' . htmlspecialchars($query, ENT_QUOTES, 'UTF-8') . '"' : 'Browse all local places'; ?></h2>
-            <p class="section-copy" style="margin:0;"><?php echo count($searchResults); ?> results found.</p>
+            <h2 class="section-title" style="margin:0 0 6px;">
+                <?php if ($activeCatalogLabel !== '' && $effectiveQuery !== ''): ?>
+                <?php echo htmlspecialchars('Results for "' . $effectiveQuery . '" in ' . $activeCatalogLabel, ENT_QUOTES, 'UTF-8'); ?>
+                <?php elseif ($activeCatalogLabel !== ''): ?>
+                <?php echo htmlspecialchars($activeCatalogLabel . ' places', ENT_QUOTES, 'UTF-8'); ?>
+                <?php elseif ($query !== ''): ?>
+                <?php echo htmlspecialchars('Results for "' . $query . '"', ENT_QUOTES, 'UTF-8'); ?>
+                <?php else: ?>
+                Browse all local places
+                <?php endif; ?>
+            </h2>
+            <p class="section-copy" style="margin:0;">
+                <?php echo count($searchResults); ?> results found<?php echo $activeFilterLabels ? ' for ' . htmlspecialchars(implode(' / ', $activeFilterLabels), ENT_QUOTES, 'UTF-8') : ''; ?>.
+            </p>
         </div>
         <span class="status-badge" id="results-status"><i data-lucide="badge-check"></i><?php echo count($searchResults); ?> places ready</span>
     </div>
@@ -191,7 +409,7 @@ function render_search_result_card($place, $loggedIn, $visitedLookup) {
         <?php else: ?>
         <div class="empty-card" id="results-empty">
             <h3 style="margin-top:0;">No places matched that search</h3>
-            <p>Try a broader term like restaurant, cafe, nightlife, entertainment, or search for part of the business name or address.</p>
+            <p>Try a broader catalog like restaurant, cafe, activity, entertainment, nightlife, heritage, or search for part of the business name or address.</p>
         </div>
         <?php endif; ?>
     </section>

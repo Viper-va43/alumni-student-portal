@@ -6,7 +6,7 @@ require_once __DIR__ . '/../includes/place_data.php';
 start_session();
 
 // Always answer with JSON because this file is called from fetch requests.
-header('Content-Type: application/json');
+header('Content-Type: application/json; charset=UTF-8');
 
 // Block anonymous users before any saved-place action is processed.
 if (!is_logged_in()) {

@@ -1781,6 +1781,45 @@ function get_customer_review_for_business($customer_id, $business_id) {
 
 
 /* -------------------------
+   DELETE CUSTOMER BUSINESS REVIEW
+------------------------- */
+function delete_customer_business_review($customer_id, $business_id) {
+
+    $customer_id = (int) $customer_id;
+    $business_id = (int) $business_id;
+
+    if ($customer_id <= 0 || $business_id <= 0) {
+        return ['ok' => false, 'message' => 'A logged-in customer and valid business are required.'];
+    }
+
+    ensure_where2go_rewards_schema();
+
+    $conn = db_connect();
+    $stmt = $conn->prepare("DELETE FROM business_reviews
+            WHERE business_id = ?
+              AND customer_id = ?
+            LIMIT 1");
+
+    if (!$stmt) {
+        return ['ok' => false, 'message' => 'The review delete could not be prepared right now.'];
+    }
+
+    $stmt->bind_param("ii", $business_id, $customer_id);
+
+    if (!$stmt->execute()) {
+        return ['ok' => false, 'message' => 'The review could not be deleted right now.'];
+    }
+
+    if ($stmt->affected_rows < 1) {
+        return ['ok' => false, 'message' => 'No review was found to delete.'];
+    }
+
+    return ['ok' => true, 'message' => 'Your review was deleted.'];
+
+}
+
+
+/* -------------------------
    CUSTOMER CHECKED IN BUSINESS
 ------------------------- */
 function has_customer_checked_in_business($customer_id, $business_id, $conn = null) {

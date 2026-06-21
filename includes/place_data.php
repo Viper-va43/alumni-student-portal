@@ -1,12 +1,503 @@
 <?php
 
+function where2go_media_type_from_url($url) {
+    $path = parse_url((string) $url, PHP_URL_PATH);
+    $extension = strtolower(pathinfo((string) $path, PATHINFO_EXTENSION));
+
+    if (in_array($extension, ['jpg', 'jpeg', 'png', 'webp', 'gif', 'jfif', 'avif'], true)) {
+        return 'image';
+    }
+
+    if (in_array($extension, ['mp4', 'webm', 'ogg', 'mov', 'm4v'], true)) {
+        return 'video';
+    }
+
+    return '';
+}
+
+function where2go_encode_media_web_path($relativePath) {
+    $parts = array_filter(explode('/', str_replace('\\', '/', (string) $relativePath)), 'strlen');
+
+    return implode('/', array_map('rawurlencode', $parts));
+}
+
+function get_where2go_media_root_info() {
+    $root = dirname(__DIR__);
+
+    foreach (['images', 'Images'] as $folderName) {
+        $path = $root . DIRECTORY_SEPARATOR . $folderName;
+
+        if (is_dir($path)) {
+            return [
+                'path' => $path,
+                'web' => $folderName,
+            ];
+        }
+    }
+
+    return [
+        'path' => $root . DIRECTORY_SEPARATOR . 'images',
+        'web' => 'images',
+    ];
+}
+
+function get_catalog_media_folder_map() {
+    return [
+        'hadramout-antar' => ['Hardra mouta anter'],
+        'garden-8' => ['Garden 8'],
+        '5a-waterway' => ['5A'],
+        'point-90-mall' => ['Point 90'],
+        'o1-mall' => ['O1 Mall'],
+        'lake-town' => ['Lake town'],
+        'the-drive' => ['The drive', 'The drive 2'],
+        '354-club' => ['354 Club'],
+        'the-waterway' => ['Waterway', 'Waterway 2'],
+        'fuel-up' => ['FuleUp'],
+        'pyramids-giza-sphinx' => ['Pyramids of giza'],
+        'grand-egyptian-museum' => ['Grand Egyption museum'],
+        'khan-khalili-moez' => ['Khan el-Khalili &Elmoez street'],
+        'cairo-citadel' => ['Cairo Citadel'],
+        'azhar-park' => ['Azhar park'],
+        'cairo-tower' => ['Cairo tower'],
+        'egyptian-museum-tahrir' => ['Egyption museum'],
+        'coptic-cairo' => ['Coptic Cairo'],
+        'manial-palace' => ['Manial Palace'],
+        'nile-kayak-maadi' => ['Nile Kayak'],
+        'paintball-archery-new-cairo' => ['Adrinalin park'],
+        'crimson-zamalek' => ['Crimson Bar and grill'],
+        'opia-lounge-ramses-hilton' => ['OPIA Lounge & Bar'],
+    ];
+}
+
+function get_catalog_place_media($place) {
+    $place = is_array($place) ? $place : [];
+    $placeId = trim((string) ($place['id'] ?? ''));
+    $folderMap = get_catalog_media_folder_map();
+    $folders = $folderMap[$placeId] ?? [];
+    $mediaRoot = get_where2go_media_root_info();
+    $baseDir = $mediaRoot['path'];
+    $webRoot = $mediaRoot['web'];
+    $allowedExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'jfif', 'avif', 'mp4', 'webm', 'ogg', 'mov', 'm4v'];
+    $media = [];
+    $seen = [];
+
+    if (!is_dir($baseDir)) {
+        return [];
+    }
+
+    foreach ($folders as $folder) {
+        $folder = trim((string) $folder);
+        $folderPath = $baseDir . DIRECTORY_SEPARATOR . $folder;
+
+        if ($folder === '' || !is_dir($folderPath)) {
+            continue;
+        }
+
+        $files = array_values(array_filter(scandir($folderPath) ?: [], function ($file) use ($folderPath, $allowedExtensions) {
+            $fullPath = $folderPath . DIRECTORY_SEPARATOR . $file;
+            $extension = strtolower(pathinfo((string) $file, PATHINFO_EXTENSION));
+
+            return is_file($fullPath) && in_array($extension, $allowedExtensions, true);
+        }));
+
+        natsort($files);
+
+        foreach ($files as $file) {
+            $relativePath = $webRoot . '/' . $folder . '/' . $file;
+            $url = where2go_encode_media_web_path($relativePath);
+
+            if (isset($seen[$url])) {
+                continue;
+            }
+
+            $type = where2go_media_type_from_url($url);
+
+            if ($type === '') {
+                continue;
+            }
+
+            $seen[$url] = true;
+            $media[] = [
+                'url' => $url,
+                'type' => $type,
+                'name' => pathinfo((string) $file, PATHINFO_FILENAME),
+            ];
+        }
+    }
+
+    return array_slice($media, 0, 16);
+}
+
+function get_place_hero_media($mediaItems, $fallbackUrl = '') {
+    $mediaItems = is_array($mediaItems) ? $mediaItems : [];
+
+    foreach ($mediaItems as $item) {
+        if (!empty($item['url']) && !empty($item['type'])) {
+            return [
+                'url' => (string) $item['url'],
+                'type' => (string) $item['type'],
+            ];
+        }
+    }
+
+    $fallbackUrl = trim((string) $fallbackUrl);
+    $fallbackType = where2go_media_type_from_url($fallbackUrl);
+
+    if ($fallbackUrl !== '') {
+        return [
+            'url' => $fallbackUrl,
+            'type' => $fallbackType !== '' ? $fallbackType : 'image',
+        ];
+    }
+
+    return null;
+}
+
+function get_first_place_image_url($mediaItems, $fallbackUrl = '') {
+    $mediaItems = is_array($mediaItems) ? $mediaItems : [];
+
+    foreach ($mediaItems as $item) {
+        if (($item['type'] ?? '') === 'image' && trim((string) ($item['url'] ?? '')) !== '') {
+            return trim((string) $item['url']);
+        }
+    }
+
+    return where2go_media_type_from_url($fallbackUrl) !== 'video' ? trim((string) $fallbackUrl) : '';
+}
+
+function get_place_catalog_definitions() {
+    return [
+        'restaurant' => [
+            'label' => 'Restaurants',
+            'icon' => 'utensils-crossed',
+            'aliases' => ['restaurant', 'restaurants', 'food', 'food plan', 'dining', 'grill', 'meal', 'meals'],
+        ],
+        'cafe' => [
+            'label' => 'Cafes',
+            'icon' => 'coffee',
+            'aliases' => ['cafe', 'cafes', 'coffee', 'relaxed'],
+        ],
+        'activity' => [
+            'label' => 'Activities',
+            'icon' => 'mountain-snow',
+            'aliases' => ['activity', 'activities', 'active', 'active day', 'fun', 'fun spot', 'fun spots', 'gaming', 'game', 'games', 'outdoor', 'outdoors', 'park'],
+        ],
+        'entertainment' => [
+            'label' => 'Entertainment',
+            'icon' => 'star',
+            'aliases' => ['entertainment', 'mall', 'malls', 'cinema', 'shopping', 'hangout', 'hangouts'],
+        ],
+        'nightlife' => [
+            'label' => 'Nightlife',
+            'icon' => 'music-4',
+            'aliases' => ['nightlife', 'night life', 'night', 'bar', 'bars', 'lounge', 'rooftop', 'club'],
+        ],
+        'heritage' => [
+            'label' => 'Heritage & Culture',
+            'icon' => 'landmark',
+            'aliases' => ['heritage', 'culture', 'cultural', 'culture walk', 'museum', 'museums', 'market', 'markets', 'history', 'historic', 'historical', 'viewpoint', 'views', 'view', 'landmark', 'landmarks', 'sightseeing'],
+        ],
+        'other' => [
+            'label' => 'Other',
+            'icon' => 'building-2',
+            'aliases' => ['other'],
+        ],
+    ];
+}
+
+function normalize_place_catalog_token($value) {
+    $normalized = strtolower(str_replace('&', ' and ', (string) $value));
+    $normalized = preg_replace('/[^a-z0-9]+/', ' ', $normalized);
+    $normalized = preg_replace('/\s+/', ' ', (string) $normalized);
+
+    return trim((string) $normalized);
+}
+
+function get_place_catalog_slug($value) {
+    static $lookup = null;
+
+    $normalized = normalize_place_catalog_token($value);
+
+    if ($normalized === '') {
+        return '';
+    }
+
+    if ($lookup === null) {
+        $lookup = [];
+
+        foreach (get_place_catalog_definitions() as $slug => $definition) {
+            $lookup[normalize_place_catalog_token($slug)] = $slug;
+            $lookup[normalize_place_catalog_token($definition['label'] ?? $slug)] = $slug;
+
+            foreach (($definition['aliases'] ?? []) as $alias) {
+                $lookup[normalize_place_catalog_token($alias)] = $slug;
+            }
+        }
+    }
+
+    return $lookup[$normalized] ?? '';
+}
+
+function get_primary_place_catalog_slug($value) {
+    static $lookup = null;
+
+    $normalized = normalize_place_catalog_token($value);
+
+    if ($normalized === '') {
+        return '';
+    }
+
+    if ($lookup === null) {
+        $lookup = [];
+
+        foreach (get_place_catalog_definitions() as $slug => $definition) {
+            $lookup[normalize_place_catalog_token($slug)] = $slug;
+            $lookup[normalize_place_catalog_token($definition['label'] ?? $slug)] = $slug;
+        }
+    }
+
+    return $lookup[$normalized] ?? '';
+}
+
+function get_place_catalog_label($catalog) {
+    $catalog = get_place_catalog_slug($catalog) ?: 'other';
+    $definitions = get_place_catalog_definitions();
+
+    return (string) ($definitions[$catalog]['label'] ?? 'Other');
+}
+
+function get_place_catalog_icon($catalog) {
+    $catalog = get_place_catalog_slug($catalog) ?: 'other';
+    $definitions = get_place_catalog_definitions();
+
+    return (string) ($definitions[$catalog]['icon'] ?? 'building-2');
+}
+
+function get_builtin_place_catalog_assignments() {
+    return [
+        'hadramout-antar' => 'restaurant',
+        'garden-8' => 'entertainment',
+        '5a-waterway' => 'entertainment',
+        'point-90-mall' => 'entertainment',
+        'o1-mall' => 'restaurant',
+        'lake-town' => 'entertainment',
+        'the-drive' => 'entertainment',
+        '354-club' => 'activity',
+        'the-waterway' => 'cafe',
+        'fuel-up' => 'cafe',
+        'pyramids-giza-sphinx' => 'heritage',
+        'grand-egyptian-museum' => 'heritage',
+        'khan-khalili-moez' => 'heritage',
+        'cairo-citadel' => 'heritage',
+        'azhar-park' => 'activity',
+        'cairo-tower' => 'heritage',
+        'egyptian-museum-tahrir' => 'heritage',
+        'coptic-cairo' => 'heritage',
+        'manial-palace' => 'heritage',
+        'nile-kayak-maadi' => 'activity',
+        'paintball-archery-new-cairo' => 'activity',
+        'crimson-zamalek' => 'nightlife',
+        'opia-lounge-ramses-hilton' => 'nightlife',
+    ];
+}
+
+function get_builtin_place_category_assignments() {
+    return [
+        'hadramout-antar' => 'Restaurant',
+        'garden-8' => 'Entertainment Hub',
+        '5a-waterway' => 'Entertainment Hub',
+        'point-90-mall' => 'Mall',
+        'o1-mall' => 'Restaurant',
+        'lake-town' => 'Mall',
+        'the-drive' => 'Entertainment Hub',
+        '354-club' => 'Fun Spot',
+        'the-waterway' => 'Relaxed Hangout',
+        'fuel-up' => 'Late-night Cafe',
+        'pyramids-giza-sphinx' => 'Heritage Site',
+        'grand-egyptian-museum' => 'Museum',
+        'khan-khalili-moez' => 'Market',
+        'cairo-citadel' => 'Heritage Site',
+        'azhar-park' => 'Outdoor',
+        'cairo-tower' => 'Viewpoint',
+        'egyptian-museum-tahrir' => 'Museum',
+        'coptic-cairo' => 'Heritage Site',
+        'manial-palace' => 'Museum',
+        'nile-kayak-maadi' => 'Activity',
+        'paintball-archery-new-cairo' => 'Activity',
+        'crimson-zamalek' => 'Rooftop',
+        'opia-lounge-ramses-hilton' => 'Lounge',
+    ];
+}
+
+function normalize_place_category_label($category) {
+    $category = trim((string) $category);
+
+    if ($category === '') {
+        return 'Other';
+    }
+
+    $lookup = [
+        'restaurant' => 'Restaurant',
+        'restaurants' => 'Restaurant',
+        'cafe' => 'Cafe',
+        'cafes' => 'Cafe',
+        'late night cafe' => 'Late-night Cafe',
+        'late night cafes' => 'Late-night Cafe',
+        'outdoor' => 'Outdoor',
+        'outdoors' => 'Outdoor',
+        'museum' => 'Museum',
+        'museums' => 'Museum',
+        'heritage' => 'Heritage Site',
+        'heritage site' => 'Heritage Site',
+        'heritage and culture' => 'Heritage Site',
+        'markets' => 'Market',
+        'market' => 'Market',
+        'viewpoint' => 'Viewpoint',
+        'view point' => 'Viewpoint',
+        'activity' => 'Activity',
+        'activities' => 'Activity',
+        'entertainment' => 'Entertainment Hub',
+        'entertainment hub' => 'Entertainment Hub',
+        'fun spots' => 'Fun Spot',
+        'fun spot' => 'Fun Spot',
+        'rooftop' => 'Rooftop',
+        'lounge' => 'Lounge',
+        'mall' => 'Mall',
+        'relaxed' => 'Relaxed Hangout',
+        'relaxed hangout' => 'Relaxed Hangout',
+        'nightlife' => 'Lounge',
+        'nightlife spot' => 'Lounge',
+        'other' => 'Other',
+    ];
+
+    $normalized = normalize_place_catalog_token($category);
+
+    return $lookup[$normalized] ?? $category;
+}
+
+function resolve_catalog_place_category($place) {
+    $place = is_array($place) ? $place : [];
+    $placeId = trim((string) ($place['id'] ?? ''));
+    $assignments = get_builtin_place_category_assignments();
+
+    if ($placeId !== '' && isset($assignments[$placeId])) {
+        return $assignments[$placeId];
+    }
+
+    return normalize_place_category_label($place['category'] ?? 'Other');
+}
+
+function infer_place_catalog_slug($place) {
+    $place = is_array($place) ? $place : [];
+    $catalog = get_place_catalog_slug($place['catalog'] ?? '');
+
+    if ($catalog !== '') {
+        return $catalog;
+    }
+
+    $placeId = trim((string) ($place['id'] ?? ''));
+    $assignments = get_builtin_place_catalog_assignments();
+
+    if ($placeId !== '' && isset($assignments[$placeId])) {
+        return $assignments[$placeId];
+    }
+
+    $categoryCatalog = get_place_catalog_slug($place['category'] ?? '');
+
+    if ($categoryCatalog !== '') {
+        return $categoryCatalog;
+    }
+
+    $searchable = normalize_place_catalog_token(implode(' ', array_filter([
+        $place['name'] ?? '',
+        $place['description'] ?? '',
+        $place['query'] ?? '',
+    ])));
+
+    foreach (get_place_catalog_definitions() as $slug => $definition) {
+        if ($slug === 'other') {
+            continue;
+        }
+
+        foreach (($definition['aliases'] ?? []) as $alias) {
+            $alias = normalize_place_catalog_token($alias);
+
+            if ($alias !== '' && strpos($searchable, $alias) !== false) {
+                return $slug;
+            }
+        }
+    }
+
+    return 'other';
+}
+
+function get_builtin_place_catalog_slug_for_name($name) {
+    static $lookup = null;
+
+    $normalizedName = normalize_place_catalog_token($name);
+
+    if ($normalizedName === '') {
+        return '';
+    }
+
+    if ($lookup === null) {
+        $lookup = [];
+
+        foreach (get_builtin_place_catalog() as $place) {
+            $placeName = normalize_place_catalog_token($place['name'] ?? '');
+
+            if ($placeName !== '') {
+                $lookup[$placeName] = infer_place_catalog_slug($place);
+            }
+        }
+    }
+
+    return $lookup[$normalizedName] ?? '';
+}
+
+function get_builtin_place_category_for_name($name) {
+    static $lookup = null;
+
+    $normalizedName = normalize_place_catalog_token($name);
+
+    if ($normalizedName === '') {
+        return '';
+    }
+
+    if ($lookup === null) {
+        $lookup = [];
+
+        foreach (get_builtin_place_catalog() as $place) {
+            $placeName = normalize_place_catalog_token($place['name'] ?? '');
+
+            if ($placeName !== '') {
+                $lookup[$placeName] = resolve_catalog_place_category($place);
+            }
+        }
+    }
+
+    return $lookup[$normalizedName] ?? '';
+}
+
+function catalog_place_matches_search($place, $query) {
+    $needle = normalize_place_catalog_token($query);
+
+    if ($needle === '') {
+        return true;
+    }
+
+    $haystack = normalize_place_catalog_token($place['search_blob'] ?? '');
+
+    return strpos($haystack, $needle) !== false;
+}
+
 // Return the built-in starter catalog that seeds discovery before partner data is added.
 function get_builtin_place_catalog() {
     return [
         [
             'id' => 'hadramout-antar',
             'name' => 'Hadramout Antar',
-            'category' => 'Restaurants',
+            'category' => 'Restaurant',
             'area' => 'Banks Complex, Fifth Settlement',
             'city' => 'New Cairo',
             'description' => 'A well-known mandi and grill stop in Fifth Settlement for hearty Arabic meals and group dinners.',
@@ -21,7 +512,7 @@ function get_builtin_place_catalog() {
         [
             'id' => 'garden-8',
             'name' => 'Garden 8',
-            'category' => 'Entertainment',
+            'category' => 'Entertainment Hub',
             'area' => 'La Nuova Vista, First Settlement',
             'city' => 'New Cairo',
             'description' => 'A polished community mall with restaurants, cafes, and open-air hangout energy in the heart of New Cairo.',
@@ -36,7 +527,7 @@ function get_builtin_place_catalog() {
         [
             'id' => '5a-waterway',
             'name' => '5A by The Waterway',
-            'category' => 'Nightlife',
+            'category' => 'Entertainment Hub',
             'area' => 'Fifth Settlement',
             'city' => 'New Cairo',
             'description' => 'A sleek dining and commercial destination with upscale restaurants, lifestyle brands, and evening plans in one cluster.',
@@ -51,7 +542,7 @@ function get_builtin_place_catalog() {
         [
             'id' => 'point-90-mall',
             'name' => 'Point 90 Mall',
-            'category' => 'Entertainment',
+            'category' => 'Mall',
             'area' => 'In front of AUC, Fifth Settlement',
             'city' => 'New Cairo',
             'description' => 'A major New Cairo mall known for shopping, dining, cinema, and easy meet-up plans right by AUC.',
@@ -66,7 +557,7 @@ function get_builtin_place_catalog() {
         [
             'id' => 'o1-mall',
             'name' => 'O1 Mall',
-            'category' => 'Restaurants',
+            'category' => 'Restaurant',
             'area' => 'Mohammed Naguib Axis',
             'city' => 'New Cairo',
             'description' => 'An upscale New Cairo stop built around restaurants, cafes, and polished everyday hangout options.',
@@ -81,7 +572,7 @@ function get_builtin_place_catalog() {
         [
             'id' => 'lake-town',
             'name' => 'Lake Town Mall',
-            'category' => 'Fun Spots',
+            'category' => 'Mall',
             'area' => 'New Cairo',
             'city' => 'Cairo',
             'description' => 'A large mixed-use mall in New Cairo with a more spacious plaza feel for casual outings and multiple stops in one trip.',
@@ -96,7 +587,7 @@ function get_builtin_place_catalog() {
         [
             'id' => 'the-drive',
             'name' => 'The Drive',
-            'category' => 'Nightlife',
+            'category' => 'Entertainment Hub',
             'area' => 'North 90 Street',
             'city' => 'New Cairo',
             'description' => 'A high-energy lifestyle destination by Waterway Developments with dining, retail, and a more polished night-out atmosphere.',
@@ -111,7 +602,7 @@ function get_builtin_place_catalog() {
         [
             'id' => '354-club',
             'name' => 'The 354 Club',
-            'category' => 'Fun Spots',
+            'category' => 'Fun Spot',
             'area' => 'New Cairo 1',
             'city' => 'Cairo',
             'description' => 'A gaming lounge pick for competitive hangouts, console sessions, and a more casual indoor social plan.',
@@ -126,7 +617,7 @@ function get_builtin_place_catalog() {
         [
             'id' => 'the-waterway',
             'name' => 'The Waterway',
-            'category' => 'Relaxed',
+            'category' => 'Relaxed Hangout',
             'area' => 'North Teseen',
             'city' => 'New Cairo',
             'description' => 'A stylish dining and leisure strip around The Waterway area, good for slower plans, coffee, and evening walks.',
@@ -141,7 +632,7 @@ function get_builtin_place_catalog() {
         [
             'id' => 'fuel-up',
             'name' => 'Fuel Up',
-            'category' => 'Relaxed',
+            'category' => 'Late-night Cafe',
             'area' => 'Next to Police Academy, First Settlement',
             'city' => 'New Cairo',
             'description' => 'A quick-stop New Cairo spot that mixes daily convenience with cafe-style stops and easy casual breaks.',
@@ -156,7 +647,7 @@ function get_builtin_place_catalog() {
         [
             'id' => 'pyramids-giza-sphinx',
             'name' => 'Pyramids of Giza & Sphinx',
-            'category' => 'Heritage',
+            'category' => 'Heritage Site',
             'area' => 'Giza Plateau',
             'city' => 'Giza',
             'description' => 'A must-see ancient wonder with the Great Pyramids and Sphinx. Approx. 700 EGP per ticket.',
@@ -186,7 +677,7 @@ function get_builtin_place_catalog() {
         [
             'id' => 'khan-khalili-moez',
             'name' => 'Khan el-Khalili & El Moez Street',
-            'category' => 'Markets',
+            'category' => 'Market',
             'area' => 'Islamic Cairo',
             'city' => 'Cairo',
             'description' => 'A classic walk through historic streets, markets, shops, cafes, and old Cairo atmosphere. Free to walk; spending varies.',
@@ -201,7 +692,7 @@ function get_builtin_place_catalog() {
         [
             'id' => 'cairo-citadel',
             'name' => 'Cairo Citadel (Salah El-Din)',
-            'category' => 'Heritage',
+            'category' => 'Heritage Site',
             'area' => 'Islamic Cairo',
             'city' => 'Cairo',
             'description' => 'A historic fortress with mosque courtyards and city views. Approx. 450 EGP per ticket.',
@@ -216,7 +707,7 @@ function get_builtin_place_catalog() {
         [
             'id' => 'azhar-park',
             'name' => 'Azhar Park',
-            'category' => 'Outdoors',
+            'category' => 'Outdoor',
             'area' => 'Darb al-Ahmar',
             'city' => 'Cairo',
             'description' => 'A green city escape for walking, skyline views, and relaxed daytime plans. Approx. 40 EGP.',
@@ -261,7 +752,7 @@ function get_builtin_place_catalog() {
         [
             'id' => 'coptic-cairo',
             'name' => 'Coptic Cairo',
-            'category' => 'Heritage',
+            'category' => 'Heritage Site',
             'area' => 'Old Cairo',
             'city' => 'Cairo',
             'description' => 'A historic district with the Hanging Church, Babylon Fortress, and quiet heritage walks. Free to enter many areas.',
@@ -321,7 +812,7 @@ function get_builtin_place_catalog() {
         [
             'id' => 'crimson-zamalek',
             'name' => 'Crimson Bar & Grill',
-            'category' => 'Nightlife',
+            'category' => 'Rooftop',
             'area' => '16 Kamal Al Tawil St, Zamalek',
             'city' => 'Cairo',
             'description' => 'An upscale Nile-side rooftop in Zamalek known for sunset views, refined dining, and a polished evening atmosphere. Meals often cost 500+ EGP.',
@@ -336,7 +827,7 @@ function get_builtin_place_catalog() {
         [
             'id' => 'opia-lounge-ramses-hilton',
             'name' => 'OPIA Lounge & Bar',
-            'category' => 'Nightlife',
+            'category' => 'Lounge',
             'area' => 'Ramses Hilton, 36th Floor, Downtown',
             'city' => 'Cairo',
             'description' => 'A high-floor lounge with panoramic downtown and Nile skyline views. Minimum charge often around 500-1000 EGP.',
@@ -348,21 +839,6 @@ function get_builtin_place_catalog() {
             'lat' => 30.0504,
             'lng' => 31.2327,
         ],
-        [
-            'id' => 'odeon-palace-rooftop',
-            'name' => 'Odeon Palace Rooftop',
-            'category' => 'Nightlife',
-            'area' => '29 Abdel Hamid Said St, Downtown',
-            'city' => 'Cairo',
-            'description' => 'A casual 24/7 downtown rooftop with budget-friendly orders, city views, and old-hotel character.',
-            'price_range' => '$',
-            'rating' => 'Live',
-            'reviews' => 0,
-            'icon' => 'moon-star',
-            'query' => 'Odeon Palace Rooftop Abdel Hamid Said Talaat Harb Downtown Cairo Egypt',
-            'lat' => 30.0472,
-            'lng' => 31.2391,
-        ],
     ];
 }
 
@@ -372,10 +848,11 @@ function ensure_catalog_places_table($conn) {
         return false;
     }
 
-    return (bool) $conn->query("CREATE TABLE IF NOT EXISTS catalog_places (
+    $created = (bool) $conn->query("CREATE TABLE IF NOT EXISTS catalog_places (
         id VARCHAR(120) PRIMARY KEY,
         name VARCHAR(180) NOT NULL,
         category VARCHAR(80) NOT NULL DEFAULT 'Featured place',
+        catalog VARCHAR(40) NOT NULL DEFAULT 'other',
         area VARCHAR(180) NOT NULL DEFAULT '',
         city VARCHAR(100) NOT NULL DEFAULT '',
         description TEXT NULL,
@@ -391,6 +868,20 @@ function ensure_catalog_places_table($conn) {
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    if ($created) {
+        if (function_exists('ensure_table_column')) {
+            ensure_table_column($conn, 'catalog_places', 'catalog', "ALTER TABLE catalog_places ADD COLUMN catalog VARCHAR(40) NOT NULL DEFAULT 'other' AFTER category");
+        } else {
+            $result = $conn->query("SHOW COLUMNS FROM catalog_places LIKE 'catalog'");
+
+            if ($result && $result->num_rows === 0) {
+                $conn->query("ALTER TABLE catalog_places ADD COLUMN catalog VARCHAR(40) NOT NULL DEFAULT 'other' AFTER category");
+            }
+        }
+    }
+
+    return $created;
 }
 
 function seed_catalog_places_table($conn, $places) {
@@ -399,11 +890,12 @@ function seed_catalog_places_table($conn, $places) {
     }
 
     $sql = "INSERT INTO catalog_places
-            (id, name, category, area, city, description, price_range, rating, reviews, icon, query_text, lat, lng, sort_order, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, name, category, catalog, area, city, description, price_range, rating, reviews, icon, query_text, lat, lng, sort_order, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
                 name = VALUES(name),
                 category = VALUES(category),
+                catalog = VALUES(catalog),
                 area = VALUES(area),
                 city = VALUES(city),
                 description = VALUES(description),
@@ -430,7 +922,8 @@ function seed_catalog_places_table($conn, $places) {
         }
 
         $name = (string) ($place['name'] ?? 'Where2Go place');
-        $category = (string) ($place['category'] ?? 'Featured place');
+        $category = resolve_catalog_place_category($place);
+        $catalog = infer_place_catalog_slug($place);
         $area = (string) ($place['area'] ?? '');
         $city = (string) ($place['city'] ?? '');
         $description = (string) ($place['description'] ?? '');
@@ -445,10 +938,11 @@ function seed_catalog_places_table($conn, $places) {
         $isActive = 1;
 
         $stmt->bind_param(
-            "ssssssssissddii",
+            "sssssssssissddii",
             $id,
             $name,
             $category,
+            $catalog,
             $area,
             $city,
             $description,
@@ -473,7 +967,7 @@ function get_database_place_catalog($conn) {
         return [];
     }
 
-    $result = $conn->query("SELECT id, name, category, area, city, description, price_range, rating, reviews, icon, query_text, lat, lng
+    $result = $conn->query("SELECT id, name, category, catalog, area, city, description, price_range, rating, reviews, icon, query_text, lat, lng
                             FROM catalog_places
                             WHERE is_active = 1
                             ORDER BY sort_order ASC, name ASC");
@@ -489,6 +983,7 @@ function get_database_place_catalog($conn) {
             'id' => (string) ($row['id'] ?? ''),
             'name' => (string) ($row['name'] ?? ''),
             'category' => (string) ($row['category'] ?? ''),
+            'catalog' => (string) ($row['catalog'] ?? ''),
             'area' => (string) ($row['area'] ?? ''),
             'city' => (string) ($row['city'] ?? ''),
             'description' => (string) ($row['description'] ?? ''),
@@ -771,6 +1266,55 @@ function submit_catalog_place_review($customer_id, $catalog_id, $rating, $commen
     }
 }
 
+function delete_catalog_place_review($customer_id, $catalog_id) {
+    $customer_id = (int) $customer_id;
+    $catalog_id = trim((string) $catalog_id);
+
+    if ($customer_id <= 0 || $catalog_id === '') {
+        return ['ok' => false, 'message' => 'A logged-in customer and valid place are required.'];
+    }
+
+    $conn = db_connect();
+    ensure_catalog_place_reviews_table($conn);
+
+    try {
+        $conn->begin_transaction();
+
+        $stmt = $conn->prepare("DELETE FROM catalog_place_reviews
+                WHERE catalog_id = ?
+                  AND customer_id = ?
+                LIMIT 1");
+
+        if (!$stmt) {
+            throw new Exception('The review delete could not be prepared.');
+        }
+
+        $stmt->bind_param("si", $catalog_id, $customer_id);
+
+        if (!$stmt->execute()) {
+            throw new Exception('The review could not be deleted.');
+        }
+
+        if ($stmt->affected_rows < 1) {
+            $conn->rollback();
+            return ['ok' => false, 'message' => 'No review was found to delete.'];
+        }
+
+        update_catalog_place_review_count($conn, $catalog_id);
+        $conn->commit();
+
+        return ['ok' => true, 'message' => 'Your review was deleted.'];
+    } catch (Throwable $error) {
+        $conn->rollback();
+
+        return [
+            'ok' => false,
+            'message' => 'The review could not be deleted right now.',
+            'error' => $error->getMessage(),
+        ];
+    }
+}
+
 // Find one catalog place by its stable identifier.
 function get_place_by_id($placeId) {
     foreach (get_place_catalog() as $place) {
@@ -814,10 +1358,16 @@ function get_suggested_places($visitedIds = [], $limit = 4) {
 // Shape a built-in catalog record so it matches the discovery and search UI contract.
 function normalize_catalog_place_for_discovery($place) {
     $place = is_array($place) ? $place : [];
+    $catalog = infer_place_catalog_slug($place);
+    $catalogLabel = get_place_catalog_label($catalog);
     $address = trim(implode(', ', array_filter([
         trim((string) ($place['area'] ?? '')),
         trim((string) ($place['city'] ?? '')),
     ])));
+    $mediaItems = get_catalog_place_media($place);
+    $heroMedia = get_place_hero_media($mediaItems, $place['photo_url'] ?? '');
+    $photoUrl = get_first_place_image_url($mediaItems, $place['photo_url'] ?? '');
+    $category = resolve_catalog_place_category($place);
 
     return [
         'id' => (string) ($place['id'] ?? ''),
@@ -826,7 +1376,10 @@ function normalize_catalog_place_for_discovery($place) {
         'business_id' => null,
         'location_id' => null,
         'name' => trim((string) ($place['name'] ?? 'Where2Go place')),
-        'category' => trim((string) ($place['category'] ?? 'Featured place')),
+        'category' => $category,
+        'catalog' => $catalog,
+        'catalog_label' => $catalogLabel,
+        'catalog_icon' => get_place_catalog_icon($catalog),
         'area' => trim((string) ($place['area'] ?? '')),
         'city' => trim((string) ($place['city'] ?? '')),
         'address' => $address,
@@ -835,7 +1388,11 @@ function normalize_catalog_place_for_discovery($place) {
         'rating' => trim((string) ($place['rating'] ?? 'Featured')),
         'reviews' => (int) ($place['reviews'] ?? 0),
         'icon' => trim((string) ($place['icon'] ?? 'map-pinned')),
-        'photo_url' => trim((string) ($place['photo_url'] ?? '')),
+        'photo_url' => $photoUrl,
+        'media_items' => $mediaItems,
+        'hero_media' => $heroMedia,
+        'hero_media_url' => $heroMedia['url'] ?? '',
+        'hero_media_type' => $heroMedia['type'] ?? '',
         'photo_attribution' => trim((string) ($place['photo_attribution'] ?? '')),
         'website_url' => trim((string) ($place['website_url'] ?? '')),
         'offer_title' => '',
@@ -843,10 +1400,13 @@ function normalize_catalog_place_for_discovery($place) {
         'detail_url' => 'place.php?catalog_id=' . rawurlencode((string) ($place['id'] ?? '')),
         'search_blob' => strtolower(trim(implode(' ', array_filter([
             $place['name'] ?? '',
-            $place['category'] ?? '',
+            $category,
+            $catalog,
+            $catalogLabel,
             $place['area'] ?? '',
             $place['city'] ?? '',
             $place['description'] ?? '',
+            $place['query'] ?? '',
         ])))),
     ];
 }
@@ -857,6 +1417,33 @@ function normalize_public_business_for_discovery($business) {
     $businessId = (int) ($business['business_id'] ?? 0);
     $address = trim((string) ($business['primary_address'] ?? ''));
     $offerTitle = trim((string) ($business['active_offer_title'] ?? ''));
+    $photoUrl = trim((string) ($business['photo_url'] ?? ''));
+    $heroMedia = get_place_hero_media([], $photoUrl);
+    $catalog = get_builtin_place_catalog_slug_for_name($business['name'] ?? '');
+    $category = get_builtin_place_category_for_name($business['name'] ?? '');
+
+    if ($catalog === '') {
+        $catalog = get_place_catalog_slug($business['type'] ?? '');
+    }
+
+    if ($catalog === '' || $catalog === 'other') {
+        $customCatalog = get_place_catalog_slug($business['custom_type'] ?? ($business['type_label'] ?? ''));
+
+        if ($customCatalog !== '') {
+            $catalog = $customCatalog;
+        }
+    }
+
+    if ($catalog === '') {
+        $catalog = 'other';
+    }
+
+    if ($category === '') {
+        $customCategory = trim((string) ($business['custom_type'] ?? ''));
+        $category = normalize_place_category_label($customCategory !== '' ? $customCategory : ($business['type_label'] ?? 'Business'));
+    }
+
+    $catalogLabel = get_place_catalog_label($catalog);
     $descriptionParts = [];
 
     if ($offerTitle !== '') {
@@ -878,7 +1465,10 @@ function normalize_public_business_for_discovery($business) {
         'business_id' => $businessId > 0 ? $businessId : null,
         'location_id' => !empty($business['primary_location_id']) ? (int) $business['primary_location_id'] : null,
         'name' => trim((string) ($business['name'] ?? 'Where2Go business')),
-        'category' => trim((string) ($business['type_label'] ?? 'Business')),
+        'category' => $category,
+        'catalog' => $catalog,
+        'catalog_label' => $catalogLabel,
+        'catalog_icon' => get_place_catalog_icon($catalog),
         'area' => $address,
         'city' => '',
         'address' => $address,
@@ -887,7 +1477,11 @@ function normalize_public_business_for_discovery($business) {
         'rating' => $ratingValue,
         'reviews' => (int) ($business['review_count'] ?? 0),
         'icon' => trim((string) ($business['icon'] ?? 'building-2')),
-        'photo_url' => trim((string) ($business['photo_url'] ?? '')),
+        'photo_url' => $photoUrl,
+        'media_items' => [],
+        'hero_media' => $heroMedia,
+        'hero_media_url' => $heroMedia['url'] ?? '',
+        'hero_media_type' => $heroMedia['type'] ?? '',
         'photo_attribution' => '',
         'website_url' => trim((string) ($business['website'] ?? '')),
         'offer_title' => $offerTitle,
@@ -895,7 +1489,9 @@ function normalize_public_business_for_discovery($business) {
         'detail_url' => $businessId > 0 ? 'place.php?business_id=' . rawurlencode((string) $businessId) : '',
         'search_blob' => strtolower(trim(implode(' ', array_filter([
             $business['name'] ?? '',
-            $business['type_label'] ?? '',
+            $category,
+            $catalog,
+            $catalogLabel,
             $business['primary_address'] ?? '',
             $business['description'] ?? '',
             $offerTitle,
@@ -903,8 +1499,51 @@ function normalize_public_business_for_discovery($business) {
     ];
 }
 
+function get_discovery_place_dedupe_key($place) {
+    $place = is_array($place) ? $place : [];
+    $name = normalize_place_catalog_token($place['name'] ?? '');
+
+    if ($name === '') {
+        return '';
+    }
+
+    return 'name:' . $name;
+}
+
+function dedupe_discovery_places($places) {
+    $places = is_array($places) ? $places : [];
+    $deduped = [];
+    $positions = [];
+
+    foreach ($places as $place) {
+        $place = is_array($place) ? $place : [];
+        $key = get_discovery_place_dedupe_key($place);
+
+        if ($key === '') {
+            $deduped[] = $place;
+            continue;
+        }
+
+        if (!array_key_exists($key, $positions)) {
+            $positions[$key] = count($deduped);
+            $deduped[] = $place;
+            continue;
+        }
+
+        $position = $positions[$key];
+        $currentSource = (string) ($place['source'] ?? '');
+        $existingSource = (string) ($deduped[$position]['source'] ?? '');
+
+        if ($currentSource === 'business' && $existingSource !== 'business') {
+            $deduped[$position] = $place;
+        }
+    }
+
+    return array_values($deduped);
+}
+
 // Merge catalog places and approved partner businesses into one searchable discovery list.
-function get_discovery_places($query = '', $limit = null) {
+function get_discovery_places($query = '', $limit = null, $catalog = '') {
     $places = [];
 
     foreach (get_place_catalog() as $place) {
@@ -925,11 +1564,29 @@ function get_discovery_places($query = '', $limit = null) {
         }
     }
 
-    $query = strtolower(trim((string) $query));
+    $places = dedupe_discovery_places($places);
+
+    $query = trim((string) $query);
+    $catalogFilter = get_place_catalog_slug($catalog);
+
+    if ($catalogFilter === '') {
+        $queryCatalog = get_primary_place_catalog_slug($query);
+
+        if ($queryCatalog !== '') {
+            $catalogFilter = $queryCatalog;
+            $query = '';
+        }
+    }
+
+    if ($catalogFilter !== '') {
+        $places = array_values(array_filter($places, function ($place) use ($catalogFilter) {
+            return ($place['catalog'] ?? '') === $catalogFilter;
+        }));
+    }
 
     if ($query !== '') {
         $places = array_values(array_filter($places, function ($place) use ($query) {
-            return strpos((string) ($place['search_blob'] ?? ''), $query) !== false;
+            return catalog_place_matches_search($place, $query);
         }));
     }
 
