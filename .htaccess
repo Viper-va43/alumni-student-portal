@@ -1,5 +1,5 @@
 # Prefer the application home pages when Apache resolves the folder root.
-DirectoryIndex Home.php index.php
+DirectoryIndex pages/public/Home.php pages/public/index.php
 
 Options -Indexes
 
@@ -22,7 +22,32 @@ Options -Indexes
 
 RewriteEngine On
 
-RewriteRule ^scan/?$ api-scan.php [L,QSA]
-RewriteRule ^user/?$ api-user.php [L,QSA]
-RewriteRule ^spin-reward/?$ api-spin-reward.php [L,QSA]
-RewriteRule ^rewards/?$ api-rewards.php [L,QSA]
+RewriteRule ^Home\.php$ pages/public/Home.php [L,QSA]
+RewriteRule ^index\.php$ pages/public/index.php [L,QSA]
+RewriteRule ^about\.php$ pages/public/about.php [L,QSA]
+RewriteRule ^search\.php$ pages/public/search.php [L,QSA]
+RewriteRule ^place\.php$ pages/public/place.php [L,QSA]
+RewriteRule ^checkin\.php$ pages/public/checkin.php [L,QSA]
+
+RewriteRule ^login\.php$ pages/account/login.php [L,QSA]
+RewriteRule ^logout\.php$ pages/account/logout.php [L,QSA]
+RewriteRule ^register\.php$ pages/account/register.php [L,QSA]
+RewriteRule ^profile\.php$ pages/account/profile.php [L,QSA]
+RewriteRule ^suggestions\.php$ pages/account/suggestions.php [L,QSA]
+
+RewriteRule ^partner-login\.php$ pages/partner/partner-login.php [L,QSA]
+RewriteRule ^partner-logout\.php$ pages/partner/partner-logout.php [L,QSA]
+RewriteRule ^partner-register\.php$ pages/partner/partner-register.php [L,QSA]
+RewriteRule ^partner-dashboard\.php$ pages/partner/partner-dashboard.php [L,QSA]
+RewriteRule ^partner-business-form\.php$ pages/partner/partner-business-form.php [L,QSA]
+
+RewriteRule ^api-user\.php$ api/legacy/api-user.php [L,QSA]
+RewriteRule ^api-rewards\.php$ api/legacy/api-rewards.php [L,QSA]
+RewriteRule ^api-spin-reward\.php$ api/legacy/api-spin-reward.php [L,QSA]
+RewriteRule ^api-scan\.php$ api/legacy/api-scan.php [L,QSA]
+RewriteRule ^future-work-before-or-after-launch\.php$ docs/project/future-work-before-or-after-launch.php [L,QSA]
+
+RewriteRule ^scan/?$ api/legacy/api-scan.php [L,QSA]
+RewriteRule ^user/?$ api/legacy/api-user.php [L,QSA]
+RewriteRule ^spin-reward/?$ api/legacy/api-spin-reward.php [L,QSA]
+RewriteRule ^rewards/?$ api/legacy/api-rewards.php [L,QSA]

@@ -3,8 +3,10 @@
     const customTypeWrap = document.querySelector('[data-custom-type-wrap]');
     const locationList = document.querySelector('[data-location-list]');
     const offerList = document.querySelector('[data-offer-list]');
+    const photoList = document.querySelector('[data-photo-list]');
     const locationTemplate = document.getElementById('location-template');
     const offerTemplate = document.getElementById('offer-template');
+    let draggedPhotoRow = null;
 
     // Show the custom business-type field only when the partner selects Other.
 
@@ -82,6 +84,76 @@
         wrapper.innerHTML = html.trim();
 
         return wrapper.firstElementChild;
+    }
+
+    // Keep photo labels and move buttons aligned with the current visual order.
+
+    function updatePhotoRows() {
+        if (!photoList) {
+            return;
+        }
+
+        const rows = Array.from(photoList.querySelectorAll('[data-photo-row]'));
+
+        rows.forEach((row, index) => {
+            const label = row.querySelector('label');
+            const input = row.querySelector('input[name="photo_urls[]"]');
+            const dragHandle = row.querySelector('[data-drag-handle]');
+            const moveUp = row.querySelector('[data-move-photo="up"]');
+            const moveDown = row.querySelector('[data-move-photo="down"]');
+            const position = index + 1;
+
+            if (input) {
+                input.id = 'photo_' + index;
+            }
+
+            if (label) {
+                label.setAttribute('for', 'photo_' + index);
+                label.textContent = 'Photo URL ' + position;
+            }
+
+            if (dragHandle) {
+                dragHandle.setAttribute('aria-label', 'Drag photo ' + position);
+            }
+
+            if (moveUp) {
+                moveUp.disabled = index === 0;
+                moveUp.setAttribute('aria-label', 'Move photo ' + position + ' up');
+            }
+
+            if (moveDown) {
+                moveDown.disabled = index === rows.length - 1;
+                moveDown.setAttribute('aria-label', 'Move photo ' + position + ' down');
+            }
+        });
+    }
+
+    function clearPhotoDropState() {
+        if (!photoList) {
+            return;
+        }
+
+        Array.from(photoList.querySelectorAll('[data-photo-row]')).forEach((row) => {
+            row.classList.remove('is-drop-before', 'is-drop-after');
+        });
+    }
+
+    function placeDraggedPhoto(targetRow, clientY) {
+        if (!photoList || !draggedPhotoRow || !targetRow || draggedPhotoRow === targetRow) {
+            return;
+        }
+
+        const rect = targetRow.getBoundingClientRect();
+        const insertAfter = clientY > rect.top + rect.height / 2;
+
+        clearPhotoDropState();
+        targetRow.classList.add(insertAfter ? 'is-drop-after' : 'is-drop-before');
+
+        if (insertAfter) {
+            photoList.insertBefore(draggedPhotoRow, targetRow.nextElementSibling);
+        } else {
+            photoList.insertBefore(draggedPhotoRow, targetRow);
+        }
     }
 
     // Hide remove buttons when only one location or offer card remains.
@@ -197,6 +269,25 @@
         const addOfferButton = event.target.closest('[data-add-offer]');
         const removeOfferButton = event.target.closest('[data-remove-offer]');
         const applyHoursButton = event.target.closest('[data-apply-hours]');
+        const movePhotoButton = event.target.closest('[data-move-photo]');
+
+        if (movePhotoButton && photoList) {
+            event.preventDefault();
+            const row = movePhotoButton.closest('[data-photo-row]');
+            const direction = movePhotoButton.getAttribute('data-move-photo');
+
+            if (row && direction === 'up' && row.previousElementSibling) {
+                photoList.insertBefore(row, row.previousElementSibling);
+                updatePhotoRows();
+            }
+
+            if (row && direction === 'down' && row.nextElementSibling) {
+                photoList.insertBefore(row.nextElementSibling, row);
+                updatePhotoRows();
+            }
+
+            return;
+        }
 
         if (addLocationButton && locationList) {
             event.preventDefault();
@@ -269,9 +360,57 @@
         }
     });
 
+    document.addEventListener('dragstart', (event) => {
+        const row = event.target.closest('[data-photo-row]');
+
+        if (!row || !photoList || !photoList.contains(row)) {
+            return;
+        }
+
+        draggedPhotoRow = row;
+        row.classList.add('is-dragging');
+
+        if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', '');
+        }
+    });
+
+    document.addEventListener('dragover', (event) => {
+        const row = event.target.closest('[data-photo-row]');
+
+        if (!row || !draggedPhotoRow || !photoList || !photoList.contains(row)) {
+            return;
+        }
+
+        event.preventDefault();
+        placeDraggedPhoto(row, event.clientY);
+    });
+
+    document.addEventListener('drop', (event) => {
+        if (!draggedPhotoRow) {
+            return;
+        }
+
+        event.preventDefault();
+        clearPhotoDropState();
+        updatePhotoRows();
+    });
+
+    document.addEventListener('dragend', () => {
+        if (draggedPhotoRow) {
+            draggedPhotoRow.classList.remove('is-dragging');
+        }
+
+        draggedPhotoRow = null;
+        clearPhotoDropState();
+        updatePhotoRows();
+    });
+
     hydrateHoursRows(document);
     updateCustomTypeVisibility();
     updateRemoveButtons();
+    updatePhotoRows();
     lucide.createIcons();
     renderLocationQrs();
 })();

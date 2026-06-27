@@ -7,7 +7,12 @@ require_admin_user();
 $messages = [];
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
-    $saveResult = save_where2go_reward_program_settings($_POST);
+    if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
+        $saveResult = ['ok' => false, 'message' => 'Your session expired. Refresh the page and try again.'];
+    } else {
+        $saveResult = save_where2go_reward_program_settings($_POST);
+    }
+
     $messages[] = [
         'type' => !empty($saveResult['ok']) ? 'success' : 'error',
         'text' => (string) ($saveResult['message'] ?? 'The reward settings could not be saved right now.'),
@@ -54,6 +59,7 @@ foreach ($rewardDefinitions as $definition) {
         <nav class="topbar-right" aria-label="Admin reward configuration navigation">
             <a class="nav-link" href="../Home.php">Home</a>
             <a class="nav-link" href="business-approvals.php">Approvals</a>
+            <a class="nav-link" href="top-picks.php">Top picks</a>
             <a class="nav-link" href="../partner-dashboard.php">Partner dashboard</a>
             <a class="primary-btn" href="../logout.php"><i data-lucide="log-out"></i>Logout</a>
         </nav>
@@ -82,6 +88,7 @@ foreach ($rewardDefinitions as $definition) {
     <?php endif; ?>
 
     <form action="reward-config.php" method="POST" class="reward-grid" style="margin-top:24px;">
+        <?php echo csrf_field(); ?>
         <section class="reward-config-grid">
             <section class="panel-card">
                 <h2>Scan rewards</h2>

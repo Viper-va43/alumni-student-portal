@@ -1417,7 +1417,12 @@ function normalize_public_business_for_discovery($business) {
     $businessId = (int) ($business['business_id'] ?? 0);
     $address = trim((string) ($business['primary_address'] ?? ''));
     $offerTitle = trim((string) ($business['active_offer_title'] ?? ''));
-    $photoUrl = trim((string) ($business['photo_url'] ?? ''));
+    $theme = function_exists('get_business_theme_payload') ? get_business_theme_payload($business) : [];
+    $coverUrl = trim((string) ($theme['coverImageUrl'] ?? ''));
+    $photoUrl = $coverUrl !== '' ? $coverUrl : trim((string) ($business['photo_url'] ?? ''));
+    $searchTags = function_exists('normalize_business_search_tags')
+        ? normalize_business_search_tags($business['search_tags'] ?? '')
+        : trim((string) ($business['search_tags'] ?? ''));
     $heroMedia = get_place_hero_media([], $photoUrl);
     $catalog = get_builtin_place_catalog_slug_for_name($business['name'] ?? '');
     $category = get_builtin_place_category_for_name($business['name'] ?? '');
@@ -1478,6 +1483,7 @@ function normalize_public_business_for_discovery($business) {
         'reviews' => (int) ($business['review_count'] ?? 0),
         'icon' => trim((string) ($business['icon'] ?? 'building-2')),
         'photo_url' => $photoUrl,
+        'theme' => $theme,
         'media_items' => [],
         'hero_media' => $heroMedia,
         'hero_media_url' => $heroMedia['url'] ?? '',
@@ -1486,6 +1492,8 @@ function normalize_public_business_for_discovery($business) {
         'website_url' => trim((string) ($business['website'] ?? '')),
         'offer_title' => $offerTitle,
         'has_offer' => $offerTitle !== '',
+        'search_tags' => $searchTags,
+        'tags' => function_exists('get_business_search_tag_list') ? get_business_search_tag_list($searchTags) : [],
         'detail_url' => $businessId > 0 ? 'place.php?business_id=' . rawurlencode((string) $businessId) : '',
         'search_blob' => strtolower(trim(implode(' ', array_filter([
             $business['name'] ?? '',
@@ -1494,6 +1502,7 @@ function normalize_public_business_for_discovery($business) {
             $catalogLabel,
             $business['primary_address'] ?? '',
             $business['description'] ?? '',
+            $searchTags,
             $offerTitle,
         ])))),
     ];

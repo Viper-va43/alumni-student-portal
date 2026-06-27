@@ -172,6 +172,67 @@
     margin: 6px 0 0;
 }
 
+.photo-order-list {
+    display: grid;
+    gap: 16px;
+}
+
+.photo-order-row {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    gap: 16px;
+    align-items: end;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    background: var(--panel-soft);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.photo-order-row.is-dragging {
+    opacity: 0.62;
+    transform: scale(0.99);
+}
+
+.photo-order-row.is-drop-before,
+.photo-order-row.is-drop-after {
+    border-color: rgba(242, 108, 28, 0.5);
+    box-shadow: 0 0 0 4px rgba(242, 108, 28, 0.12);
+}
+
+.photo-drag-handle,
+.photo-order-btn {
+    display: inline-flex;
+    width: 44px;
+    height: 44px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--panel-strong);
+    color: var(--text);
+    cursor: grab;
+}
+
+.photo-drag-handle:active {
+    cursor: grabbing;
+}
+
+.photo-order-actions {
+    display: grid;
+    grid-template-columns: repeat(2, 44px);
+    gap: 8px;
+}
+
+.photo-order-btn {
+    cursor: pointer;
+}
+
+.photo-order-btn:disabled {
+    opacity: 0.42;
+    cursor: not-allowed;
+}
+
 .inline-fields {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -311,6 +372,70 @@
     margin-top: 14px;
 }
 
+.profile-completion,
+.calendar-day-card,
+.calendar-booking-list,
+.calendar-booking-item {
+    display: grid;
+    gap: 10px;
+}
+
+.profile-completion {
+    padding: 14px;
+    border-radius: 20px;
+    background: rgba(242, 108, 28, 0.06);
+    border: 1px solid rgba(242, 108, 28, 0.18);
+}
+
+.completion-meter {
+    height: 9px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+}
+
+.completion-meter span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--accent), #ff9b4a);
+}
+
+.reservation-calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+    margin-top: 18px;
+}
+
+.calendar-day-card {
+    padding: 16px;
+    border-radius: 22px;
+    background: var(--panel-soft);
+    border: 1px solid var(--border);
+    min-height: 150px;
+}
+
+.calendar-day-card.has-bookings {
+    border-color: rgba(242, 108, 28, 0.25);
+    box-shadow: 0 16px 30px rgba(242, 108, 28, 0.08);
+}
+
+.calendar-day-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.calendar-booking-item {
+    padding: 12px;
+    border-radius: 18px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+}
+
 .approval-action-form textarea {
     min-height: 96px;
 }
@@ -415,5 +540,14 @@
     .review-history-grid,
     .qr-grid {
         grid-template-columns: 1fr;
+    }
+
+    .photo-order-row {
+        grid-template-columns: 44px minmax(0, 1fr);
+    }
+
+    .photo-order-actions {
+        grid-column: 1 / -1;
+        justify-content: end;
     }
 }

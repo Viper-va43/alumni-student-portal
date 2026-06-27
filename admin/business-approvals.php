@@ -64,7 +64,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $status = trim((string) ($_POST['status'] ?? ''));
     $reviewNote = trim((string) ($_POST['review_note'] ?? ''));
 
-    if ($status === 'rejected' && $reviewNote === '') {
+    if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
+        $messages[] = ['type' => 'error', 'text' => 'Your session expired. Refresh the page and try again.'];
+    } elseif ($status === 'rejected' && $reviewNote === '') {
         $messages[] = ['type' => 'error', 'text' => 'Add a rejection note so you can remember why this business was rejected.'];
     } elseif ($businessId > 0 && in_array($status, ['approved', 'rejected', 'pending'], true) && set_business_approval_status($businessId, $status, $reviewNote)) {
         header('Location: business-approvals.php?updated=' . rawurlencode($status) . '&review_business_id=' . $businessId . '&review_status=' . rawurlencode($status));
@@ -140,6 +142,7 @@ $selectedReviewedBusiness = $selectedReviewSummary ? get_business_by_id((int) ($
             <a class="nav-link" href="../Home.php">Home</a>
             <a class="nav-link" href="../search.php">Search</a>
             <a class="nav-link" href="dashboard.php">Admin dashboard</a>
+            <a class="nav-link" href="top-picks.php">Top picks</a>
             <a class="nav-link" href="../partner-dashboard.php">Partner dashboard</a>
             <a class="primary-btn" href="../logout.php"><i data-lucide="log-out"></i>Logout</a>
         </nav>
@@ -200,6 +203,7 @@ $selectedReviewedBusiness = $selectedReviewSummary ? get_business_by_id((int) ($
                     <?php endif; ?>
 
                     <form action="business-approvals.php" method="POST" class="approval-action-form">
+                        <?php echo csrf_field(); ?>
                         <input type="hidden" name="business_id" value="<?php echo (int) ($business['business_id'] ?? 0); ?>">
                         <div class="field">
                             <label for="review_note_<?php echo (int) ($business['business_id'] ?? 0); ?>">Rejection note</label>

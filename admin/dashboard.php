@@ -153,6 +153,7 @@ $placeStats = admin_dashboard_place_stats($conn, $placeSearch);
             <a class="nav-link" href="../Home.php">Home</a>
             <a class="nav-link" href="../search.php">Search</a>
             <a class="nav-link" href="business-approvals.php">Approvals</a>
+            <a class="nav-link" href="top-picks.php">Top picks</a>
             <a class="nav-link" href="../partner-dashboard.php">Partner dashboard</a>
             <a class="primary-btn" href="../logout.php"><i data-lucide="log-out"></i>Logout</a>
         </nav>

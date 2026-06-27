@@ -15,6 +15,12 @@ if (!is_logged_in()) {
     exit;
 }
 
+if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
+    http_response_code(403);
+    echo json_encode(['ok' => false, 'message' => 'Your session expired. Refresh the page and try again.']);
+    exit;
+}
+
 // Read the place details sent by the front-end save buttons.
 $placeId = trim($_POST['place_id'] ?? '');
 $businessId = (int) ($_POST['business_id'] ?? 0);

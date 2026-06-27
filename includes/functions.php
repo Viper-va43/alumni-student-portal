@@ -84,11 +84,205 @@ function start_session() {
 
 
 /* -------------------------
+   CSRF PROTECTION
+------------------------- */
+function get_csrf_token() {
+
+    start_session();
+
+    if (empty($_SESSION['csrf_token']) || !is_string($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+
+    return $_SESSION['csrf_token'];
+
+}
+
+
+function csrf_field() {
+
+    return '<input type="hidden" name="csrf_token" value="' . htmlspecialchars(get_csrf_token(), ENT_QUOTES, 'UTF-8') . '">';
+
+}
+
+
+function verify_csrf_token($token) {
+
+    start_session();
+    $token = is_string($token) ? $token : '';
+    $sessionToken = is_string($_SESSION['csrf_token'] ?? null) ? $_SESSION['csrf_token'] : '';
+
+    return $token !== '' && $sessionToken !== '' && hash_equals($sessionToken, $token);
+
+}
+
+
+/* -------------------------
+   LOGIN RATE LIMITING
+------------------------- */
+function get_client_ip_address() {
+
+    $ip = trim((string) ($_SERVER['REMOTE_ADDR'] ?? ''));
+
+    return $ip !== '' ? substr($ip, 0, 45) : 'unknown';
+
+}
+
+
+function normalize_login_identifier($identifier) {
+
+    $identifier = strtolower(trim((string) $identifier));
+
+    return $identifier !== '' ? $identifier : 'unknown';
+
+}
+
+
+function get_login_attempt_hash($scope, $identifier) {
+
+    return hash('sha256', strtolower(trim((string) $scope)) . '|' . normalize_login_identifier($identifier) . '|' . get_client_ip_address());
+
+}
+
+
+function ensure_login_attempts_table($conn = null) {
+
+    static $ready = false;
+
+    if ($ready) {
+        return true;
+    }
+
+    $conn = $conn instanceof mysqli ? $conn : db_connect();
+    $sql = "CREATE TABLE IF NOT EXISTS login_attempts (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        scope VARCHAR(40) NOT NULL,
+        identifier_hash CHAR(64) NOT NULL,
+        ip_address VARCHAR(45) NOT NULL,
+        success TINYINT(1) NOT NULL DEFAULT 0,
+        attempted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_login_attempts_scope_hash_time (scope, identifier_hash, attempted_at),
+        KEY idx_login_attempts_time (attempted_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+
+    if (!$conn->query($sql)) {
+        error_log('Where2Go login attempt table setup failed: ' . $conn->error);
+        return false;
+    }
+
+    $ready = true;
+
+    return true;
+
+}
+
+
+function get_login_rate_limit_status($scope, $identifier, $max_attempts = 5, $window_minutes = 15) {
+
+    $scope = substr(trim((string) $scope), 0, 40);
+    $identifierHash = get_login_attempt_hash($scope, $identifier);
+    $max_attempts = max(1, (int) $max_attempts);
+    $window_minutes = max(1, (int) $window_minutes);
+    $conn = db_connect();
+
+    if (!ensure_login_attempts_table($conn)) {
+        return ['limited' => false, 'failed_count' => 0, 'retry_after_seconds' => 0];
+    }
+
+    $sql = "SELECT COUNT(*) AS failed_count,
+                   TIMESTAMPDIFF(SECOND, MAX(attempted_at), NOW()) AS seconds_since_last
+            FROM login_attempts
+            WHERE scope = ?
+              AND identifier_hash = ?
+              AND success = 0
+              AND attempted_at >= DATE_SUB(NOW(), INTERVAL ? MINUTE)";
+    $stmt = $conn->prepare($sql);
+
+    if (!$stmt) {
+        return ['limited' => false, 'failed_count' => 0, 'retry_after_seconds' => 0];
+    }
+
+    $stmt->bind_param("ssi", $scope, $identifierHash, $window_minutes);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc() ?: [];
+    $failedCount = (int) ($row['failed_count'] ?? 0);
+    $secondsSinceLast = max(0, (int) ($row['seconds_since_last'] ?? 0));
+    $limited = $failedCount >= $max_attempts;
+    $retryAfter = $limited ? max(60, ($window_minutes * 60) - $secondsSinceLast) : 0;
+
+    return [
+        'limited' => $limited,
+        'failed_count' => $failedCount,
+        'retry_after_seconds' => $retryAfter,
+    ];
+
+}
+
+
+function record_login_attempt($scope, $identifier, $success) {
+
+    $scope = substr(trim((string) $scope), 0, 40);
+    $identifierHash = get_login_attempt_hash($scope, $identifier);
+    $ipAddress = get_client_ip_address();
+    $successValue = !empty($success) ? 1 : 0;
+    $conn = db_connect();
+
+    if (!ensure_login_attempts_table($conn)) {
+        return false;
+    }
+
+    $stmt = $conn->prepare("INSERT INTO login_attempts (scope, identifier_hash, ip_address, success) VALUES (?, ?, ?, ?)");
+
+    if (!$stmt) {
+        return false;
+    }
+
+    $stmt->bind_param("sssi", $scope, $identifierHash, $ipAddress, $successValue);
+    $ok = $stmt->execute();
+
+    if (!$successValue) {
+        $status = get_login_rate_limit_status($scope, $identifier);
+
+        if ((int) ($status['failed_count'] ?? 0) >= 3) {
+            error_log('Where2Go suspicious failed login attempts: scope=' . $scope . ' ip=' . $ipAddress . ' failed_count=' . (int) $status['failed_count']);
+        }
+    }
+
+    return $ok;
+
+}
+
+
+function clear_login_attempts($scope, $identifier) {
+
+    $scope = substr(trim((string) $scope), 0, 40);
+    $identifierHash = get_login_attempt_hash($scope, $identifier);
+    $conn = db_connect();
+
+    if (!ensure_login_attempts_table($conn)) {
+        return false;
+    }
+
+    $stmt = $conn->prepare("DELETE FROM login_attempts WHERE scope = ? AND identifier_hash = ? AND success = 0");
+
+    if (!$stmt) {
+        return false;
+    }
+
+    $stmt->bind_param("ss", $scope, $identifierHash);
+
+    return $stmt->execute();
+
+}
+
+
+/* -------------------------
    LOGIN USER
 ------------------------- */
 function login_user($customer) {
 
     start_session();
+    session_regenerate_id(true);
 
     $_SESSION['customer_id'] = $customer['Customer_ID'];
     $_SESSION['customer_name'] = $customer['First_N'];
@@ -160,6 +354,7 @@ function logout_user() {
 function login_partner_user($partner) {
 
     start_session();
+    session_regenerate_id(true);
 
     $_SESSION['partner_id'] = (int) ($partner['partner_id'] ?? 0);
     $_SESSION['partner_name'] = (string) ($partner['owner_name'] ?? '');
@@ -517,6 +712,792 @@ function ensure_table_index($conn, $table_name, $index_name, $alter_sql) {
 
     if ($result && $result->num_rows === 0) {
         $conn->query($alter_sql);
+    }
+
+}
+
+
+/* -------------------------
+   BUSINESS SEARCH TAGS
+------------------------- */
+function ensure_business_search_tags_schema($conn = null) {
+
+    $conn = $conn ?: db_connect();
+
+    ensure_table_column(
+        $conn,
+        'businesses',
+        'search_tags',
+        'ALTER TABLE businesses ADD COLUMN search_tags TEXT NULL AFTER custom_type'
+    );
+
+}
+
+/* -------------------------
+   PARTNER RESERVATION SETTINGS
+------------------------- */
+function ensure_partner_reservation_settings_schema($conn = null) {
+
+    $conn = $conn ?: db_connect();
+
+    ensure_table_column($conn, 'business_locations', 'min_party_size', "ALTER TABLE business_locations ADD COLUMN min_party_size INT NOT NULL DEFAULT 1 AFTER has_reservations");
+    ensure_table_column($conn, 'business_locations', 'max_party_size', "ALTER TABLE business_locations ADD COLUMN max_party_size INT NOT NULL DEFAULT 40 AFTER min_party_size");
+    ensure_table_column($conn, 'business_locations', 'reservation_duration_minutes', "ALTER TABLE business_locations ADD COLUMN reservation_duration_minutes INT NOT NULL DEFAULT 60 AFTER max_party_size");
+    ensure_table_column($conn, 'business_locations', 'reservation_buffer_minutes', "ALTER TABLE business_locations ADD COLUMN reservation_buffer_minutes INT NOT NULL DEFAULT 0 AFTER reservation_duration_minutes");
+    ensure_table_column($conn, 'business_locations', 'auto_approve_reservations', "ALTER TABLE business_locations ADD COLUMN auto_approve_reservations TINYINT(1) NOT NULL DEFAULT 0 AFTER reservation_buffer_minutes");
+    ensure_table_column($conn, 'business_locations', 'same_day_cutoff_time', "ALTER TABLE business_locations ADD COLUMN same_day_cutoff_time TIME NULL AFTER auto_approve_reservations");
+    ensure_table_column($conn, 'business_locations', 'blocked_dates', "ALTER TABLE business_locations ADD COLUMN blocked_dates TEXT NULL AFTER same_day_cutoff_time");
+
+}
+
+function normalize_partner_cutoff_time($value) {
+
+    $value = trim((string) $value);
+
+    if ($value === '') {
+        return '';
+    }
+
+    if (preg_match('/^\d{1,2}:\d{2}(:\d{2})?$/', $value) !== 1) {
+        return '';
+    }
+
+    $timestamp = strtotime($value);
+
+    return $timestamp ? date('H:i:s', $timestamp) : '';
+
+}
+
+function normalize_partner_blocked_dates($value) {
+
+    if (is_array($value)) {
+        $value = implode("\n", $value);
+    }
+
+    $parts = preg_split('/[,;\s]+/', (string) $value) ?: [];
+    $dates = [];
+    $seen = [];
+
+    foreach ($parts as $part) {
+        $part = trim((string) $part);
+
+        if ($part === '') {
+            continue;
+        }
+
+        $date = DateTime::createFromFormat('Y-m-d', $part);
+
+        if (!$date || $date->format('Y-m-d') !== $part || isset($seen[$part])) {
+            continue;
+        }
+
+        $seen[$part] = true;
+        $dates[] = $part;
+    }
+
+    sort($dates);
+
+    return implode("\n", array_slice($dates, 0, 180));
+
+}
+
+function get_location_blocked_date_list($value) {
+
+    $normalized = normalize_partner_blocked_dates($value);
+
+    return $normalized !== '' ? explode("\n", $normalized) : [];
+
+}
+
+function get_location_capacity_guest_limit($location) {
+
+    $location = is_array($location) ? $location : [];
+    $tablesPerHour = max(1, (int) ($location['capacity_per_hour'] ?? 1));
+
+    return max(4, $tablesPerHour * 4);
+
+}
+
+function get_location_guest_limit($location) {
+
+    $location = is_array($location) ? $location : [];
+    $capacityLimit = get_location_capacity_guest_limit($location);
+    $configuredMax = (int) ($location['max_party_size'] ?? 0);
+
+    if ($configuredMax <= 0) {
+        return $capacityLimit;
+    }
+
+    return max(1, min($configuredMax, $capacityLimit));
+
+}
+
+function get_location_min_party_size($location) {
+
+    $location = is_array($location) ? $location : [];
+    $configuredMin = max(1, (int) ($location['min_party_size'] ?? 1));
+
+    return min($configuredMin, get_location_guest_limit($location));
+
+}
+
+function get_location_booking_slot_minutes($location, $fallback_minutes = 60) {
+
+    $location = is_array($location) ? $location : [];
+    $duration = (int) ($location['reservation_duration_minutes'] ?? 0);
+    $buffer = max(0, (int) ($location['reservation_buffer_minutes'] ?? 0));
+
+    if ($duration <= 0) {
+        $duration = (int) $fallback_minutes;
+    }
+
+    return max(15, min(480, $duration + $buffer));
+
+}
+
+function is_location_reservation_request_allowed($location, $date, $guests = 1) {
+
+    $location = is_array($location) ? $location : [];
+    $guests = max(1, (int) $guests);
+    $dateTimestamp = strtotime((string) $date);
+
+    if (!$dateTimestamp) {
+        return false;
+    }
+
+    $bookingDate = date('Y-m-d', $dateTimestamp);
+
+    if ($guests < get_location_min_party_size($location) || $guests > get_location_guest_limit($location)) {
+        return false;
+    }
+
+    if (in_array($bookingDate, get_location_blocked_date_list($location['blocked_dates'] ?? ''), true)) {
+        return false;
+    }
+
+    $cutoffTime = normalize_partner_cutoff_time($location['same_day_cutoff_time'] ?? '');
+
+    if ($cutoffTime !== '' && $bookingDate === date('Y-m-d')) {
+        $cutoffTimestamp = strtotime($bookingDate . ' ' . $cutoffTime);
+
+        if ($cutoffTimestamp && time() > $cutoffTimestamp) {
+            return false;
+        }
+    }
+
+    return true;
+
+}
+
+function normalize_business_search_tags($value) {
+
+    if (is_array($value)) {
+        $value = implode(',', $value);
+    }
+
+    $parts = preg_split('/[,;#\r\n]+/', (string) $value) ?: [];
+    $tags = [];
+    $seen = [];
+
+    foreach ($parts as $part) {
+        $tag = trim(preg_replace('/\s+/', ' ', (string) $part));
+        $tag = trim($tag, " \t\n\r\0\x0B-");
+
+        if ($tag === '') {
+            continue;
+        }
+
+        $tag = substr($tag, 0, 40);
+        $key = strtolower($tag);
+
+        if (isset($seen[$key])) {
+            continue;
+        }
+
+        $seen[$key] = true;
+        $tags[] = $tag;
+
+        if (count($tags) >= 20) {
+            break;
+        }
+    }
+
+    return implode(', ', $tags);
+
+}
+
+function get_business_search_tag_list($value) {
+
+    $normalized = normalize_business_search_tags($value);
+
+    if ($normalized === '') {
+        return [];
+    }
+
+    return array_values(array_filter(array_map('trim', explode(',', $normalized)), 'strlen'));
+
+}
+
+
+/* -------------------------
+   BUSINESS THEME SETTINGS
+------------------------- */
+function ensure_business_theme_schema($conn = null) {
+
+    $conn = $conn ?: db_connect();
+
+    ensure_table_column($conn, 'businesses', 'theme_preset', "ALTER TABLE businesses ADD COLUMN theme_preset VARCHAR(40) NOT NULL DEFAULT 'where2go' AFTER website");
+    ensure_table_column($conn, 'businesses', 'theme_accent_color', "ALTER TABLE businesses ADD COLUMN theme_accent_color VARCHAR(7) NULL AFTER theme_preset");
+    ensure_table_column($conn, 'businesses', 'theme_cover_url', "ALTER TABLE businesses ADD COLUMN theme_cover_url VARCHAR(500) NULL AFTER theme_accent_color");
+    ensure_table_column($conn, 'businesses', 'brand_tagline', "ALTER TABLE businesses ADD COLUMN brand_tagline VARCHAR(140) NULL AFTER theme_cover_url");
+
+}
+
+function get_business_theme_presets() {
+
+    return [
+        'where2go' => 'Where2Go default',
+        'minimal' => 'Minimal',
+        'luxury' => 'Luxury',
+        'nightlife' => 'Nightlife',
+        'family' => 'Family',
+        'cafe' => 'Cafe',
+    ];
+
+}
+
+function normalize_business_theme_preset($value) {
+
+    $value = strtolower(trim((string) $value));
+
+    return array_key_exists($value, get_business_theme_presets()) ? $value : 'where2go';
+
+}
+
+function normalize_business_theme_accent_color($value) {
+
+    $value = trim((string) $value);
+
+    if ($value === '') {
+        return '';
+    }
+
+    if (preg_match('/^#?[0-9a-fA-F]{6}$/', $value) !== 1) {
+        return '';
+    }
+
+    return '#' . strtoupper(ltrim($value, '#'));
+
+}
+
+function get_business_theme_payload($business) {
+
+    $business = is_array($business) ? $business : [];
+    $preset = normalize_business_theme_preset($business['theme_preset'] ?? 'where2go');
+    $accentColor = normalize_business_theme_accent_color($business['theme_accent_color'] ?? '');
+
+    return [
+        'preset' => $preset,
+        'label' => get_business_theme_presets()[$preset] ?? 'Where2Go default',
+        'accentColor' => $accentColor !== '' ? $accentColor : '#F26C1C',
+        'coverImageUrl' => trim((string) ($business['theme_cover_url'] ?? '')),
+        'tagline' => trim((string) ($business['brand_tagline'] ?? '')),
+    ];
+
+}
+
+
+/* -------------------------
+   DAILY TOP PICKS
+------------------------- */
+function normalize_top_pick_date($date = '') {
+
+    $date = trim((string) $date);
+
+    if ($date !== '') {
+        $parsed = DateTime::createFromFormat('!Y-m-d', $date);
+        $errors = DateTime::getLastErrors();
+
+        if ($parsed && (!$errors || ((int) $errors['warning_count'] === 0 && (int) $errors['error_count'] === 0))) {
+            return $parsed->format('Y-m-d');
+        }
+    }
+
+    return date('Y-m-d');
+
+}
+
+function ensure_daily_top_picks_schema($conn = null) {
+
+    $conn = $conn ?: db_connect();
+    ensure_business_search_tags_schema($conn);
+    ensure_business_photo_order_schema($conn);
+
+    $conn->query("CREATE TABLE IF NOT EXISTS daily_top_picks (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        pick_date DATE NOT NULL,
+        business_id INT NOT NULL,
+        position TINYINT UNSIGNED NOT NULL DEFAULT 1,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_daily_top_pick (pick_date, business_id),
+        KEY idx_daily_top_picks_date_position (pick_date, position),
+        KEY idx_daily_top_picks_business (business_id),
+        CONSTRAINT fk_daily_top_picks_business
+            FOREIGN KEY (business_id) REFERENCES businesses(business_id)
+            ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    ensure_table_column(
+        $conn,
+        'daily_top_picks',
+        'position',
+        'ALTER TABLE daily_top_picks ADD COLUMN position TINYINT UNSIGNED NOT NULL DEFAULT 1 AFTER business_id'
+    );
+    ensure_table_index(
+        $conn,
+        'daily_top_picks',
+        'idx_daily_top_picks_date_position',
+        'ALTER TABLE daily_top_picks ADD INDEX idx_daily_top_picks_date_position (pick_date, position)'
+    );
+    ensure_table_index(
+        $conn,
+        'daily_top_picks',
+        'idx_daily_top_picks_business',
+        'ALTER TABLE daily_top_picks ADD INDEX idx_daily_top_picks_business (business_id)'
+    );
+
+}
+
+function top_pick_business_select_columns() {
+
+    return "b.business_id,
+        b.name,
+        b.description,
+        b.type,
+        b.custom_type,
+        b.search_tags,
+        b.logo_url,
+        b.website,
+        b.theme_preset,
+        b.theme_accent_color,
+        b.theme_cover_url,
+        b.brand_tagline,
+        COALESCE(p.image_url, '') AS photo_url,
+        COALESCE(l.location_id, 0) AS location_id,
+        COALESCE(l.location_id, 0) AS primary_location_id,
+        COALESCE(l.location_name, '') AS location_name,
+        COALESCE(l.address, '') AS address,
+        COALESCE(l.address, '') AS primary_address,
+        COALESCE(l.phone, '') AS phone,
+        COALESCE(l.promo_code, '') AS promo_code,
+        COALESCE(l.promo_details, '') AS promo_details,
+        COALESCE(l.capacity_per_hour, 0) AS capacity_per_hour,
+        COALESCE(l.has_reservations, 0) AS has_reservations,
+        COALESCE(l.checkin_enabled, 0) AS checkin_enabled,
+        (SELECT AVG(br.rating)
+         FROM business_reviews br
+         WHERE br.business_id = b.business_id) AS average_rating,
+        (SELECT COUNT(*)
+         FROM business_reviews br
+         WHERE br.business_id = b.business_id) AS review_count,
+        (SELECT bo.title
+         FROM business_offers bo
+         WHERE bo.business_id = b.business_id
+           AND bo.is_active = 1
+           AND (bo.start_date IS NULL OR bo.start_date <= CURDATE())
+           AND (bo.end_date IS NULL OR bo.end_date >= CURDATE())
+         ORDER BY bo.start_date DESC, bo.id DESC
+         LIMIT 1) AS active_offer_title";
+
+}
+
+function top_pick_business_joins_sql() {
+
+    return "LEFT JOIN (
+            SELECT business_id, MIN(location_id) AS location_id
+            FROM business_locations
+            GROUP BY business_id
+        ) first_location ON first_location.business_id = b.business_id
+        LEFT JOIN business_locations l ON l.location_id = first_location.location_id
+        LEFT JOIN business_photos p ON p.id = (
+            SELECT bp.id
+            FROM business_photos bp
+            WHERE bp.business_id = b.business_id
+            ORDER BY bp.display_order ASC, bp.id ASC
+            LIMIT 1
+        )";
+
+}
+
+function hydrate_top_pick_business_rows($result, $source = '') {
+
+    $rows = [];
+
+    if (!$result) {
+        return $rows;
+    }
+
+    while ($row = $result->fetch_assoc()) {
+        $row['icon'] = map_business_type_icon($row['type'] ?? 'other');
+        $row['type_label'] = format_business_type_label($row['type'] ?? 'other', $row['custom_type'] ?? '');
+
+        if ($source !== '') {
+            $row['top_pick_source'] = $source;
+        }
+
+        $rows[] = $row;
+    }
+
+    return $rows;
+
+}
+
+function get_daily_top_pick_rows($date = '', $limit = 6) {
+
+    $date = normalize_top_pick_date($date);
+    $limit = max(1, min(6, (int) $limit));
+    $conn = db_connect();
+    ensure_daily_top_picks_schema($conn);
+    ensure_business_theme_schema($conn);
+    $sql = "SELECT dtp.id AS top_pick_id,
+                   dtp.pick_date,
+                   dtp.position AS top_pick_position,
+                   " . top_pick_business_select_columns() . "
+            FROM daily_top_picks dtp
+            INNER JOIN businesses b ON b.business_id = dtp.business_id
+            " . top_pick_business_joins_sql() . "
+            WHERE dtp.pick_date = ?
+              AND b.approval_status = 'approved'
+            ORDER BY dtp.position ASC, dtp.id ASC
+            LIMIT ?";
+    $stmt = $conn->prepare($sql);
+
+    if (!$stmt) {
+        return [];
+    }
+
+    $stmt->bind_param("si", $date, $limit);
+    $stmt->execute();
+
+    return hydrate_top_pick_business_rows($stmt->get_result(), 'manual');
+
+}
+
+function get_automatic_top_pick_rows($limit = 6, $exclude_business_ids = []) {
+
+    $limit = max(0, min(6, (int) $limit));
+
+    if ($limit <= 0) {
+        return [];
+    }
+
+    $conn = db_connect();
+    ensure_daily_top_picks_schema($conn);
+    ensure_business_theme_schema($conn);
+    $exclude_business_ids = array_values(array_unique(array_filter(array_map('intval', (array) $exclude_business_ids), function ($id) {
+        return $id > 0;
+    })));
+    $rows = [];
+
+    $fetchAutomaticRows = function ($whereSql, $remaining) use ($conn, &$exclude_business_ids) {
+        $excludeSql = '';
+
+        if ($exclude_business_ids) {
+            $excludeSql = ' AND b.business_id NOT IN (' . implode(',', $exclude_business_ids) . ')';
+        }
+
+        $sql = "SELECT 0 AS top_pick_id,
+                       CURDATE() AS pick_date,
+                       0 AS top_pick_position,
+                       " . top_pick_business_select_columns() . "
+                FROM businesses b
+                " . top_pick_business_joins_sql() . "
+                WHERE b.approval_status = 'approved'
+                  {$excludeSql}
+                  {$whereSql}
+                ORDER BY b.created_at DESC, b.business_id DESC
+                LIMIT ?";
+        $stmt = $conn->prepare($sql);
+
+        if (!$stmt) {
+            return [];
+        }
+
+        $stmt->bind_param("i", $remaining);
+        $stmt->execute();
+
+        return hydrate_top_pick_business_rows($stmt->get_result(), 'automatic');
+    };
+
+    $nightlifeSql = "AND (
+        LOWER(COALESCE(b.type, '')) = 'nightlife'
+        OR LOWER(COALESCE(b.custom_type, '')) LIKE '%night%'
+        OR LOWER(COALESCE(b.search_tags, '')) LIKE '%night%'
+    )";
+    $rows = $fetchAutomaticRows($nightlifeSql, $limit);
+
+    foreach ($rows as $row) {
+        $exclude_business_ids[] = (int) ($row['business_id'] ?? 0);
+    }
+
+    $remaining = $limit - count($rows);
+
+    if ($remaining > 0) {
+        $rows = array_merge($rows, $fetchAutomaticRows('', $remaining));
+    }
+
+    foreach ($rows as $index => $row) {
+        $rows[$index]['top_pick_position'] = $index + 1;
+    }
+
+    return array_slice($rows, 0, $limit);
+
+}
+
+function get_top_pick_business_rows_for_app($date = '', $limit = 6) {
+
+    $limit = max(1, min(6, (int) $limit));
+    $manualRows = get_daily_top_pick_rows($date, $limit);
+
+    if (count($manualRows) >= $limit) {
+        return array_slice($manualRows, 0, $limit);
+    }
+
+    $excludeIds = array_map(function ($row) {
+        return (int) ($row['business_id'] ?? 0);
+    }, $manualRows);
+    $automaticRows = get_automatic_top_pick_rows($limit - count($manualRows), $excludeIds);
+    $rows = array_merge($manualRows, $automaticRows);
+
+    foreach ($rows as $index => $row) {
+        $rows[$index]['top_pick_position'] = $index + 1;
+    }
+
+    return array_slice($rows, 0, $limit);
+
+}
+
+function search_daily_top_pick_candidates($query = '', $date = '', $limit = 20) {
+
+    $query = trim((string) $query);
+    $date = normalize_top_pick_date($date);
+    $limit = max(1, min(40, (int) $limit));
+    $conn = db_connect();
+    ensure_daily_top_picks_schema($conn);
+    ensure_business_theme_schema($conn);
+    $whereSql = '';
+    $columns = top_pick_business_select_columns();
+    $joins = top_pick_business_joins_sql();
+
+    if ($query !== '') {
+        $whereSql = "AND (
+            b.name LIKE ?
+            OR COALESCE(b.description, '') LIKE ?
+            OR COALESCE(b.search_tags, '') LIKE ?
+            OR COALESCE(l.location_name, '') LIKE ?
+            OR COALESCE(l.address, '') LIKE ?
+            OR COALESCE(b.custom_type, b.type, '') LIKE ?
+        )";
+    }
+
+    $sql = "SELECT dtp.id AS top_pick_id,
+                   dtp.position AS top_pick_position,
+                   {$columns}
+            FROM businesses b
+            {$joins}
+            LEFT JOIN daily_top_picks dtp
+                ON dtp.business_id = b.business_id
+               AND dtp.pick_date = ?
+            WHERE b.approval_status = 'approved'
+              {$whereSql}
+            ORDER BY CASE WHEN dtp.id IS NULL THEN 1 ELSE 0 END,
+                     dtp.position ASC,
+                     b.name ASC
+            LIMIT ?";
+    $stmt = $conn->prepare($sql);
+
+    if (!$stmt) {
+        return [];
+    }
+
+    if ($query !== '') {
+        $needle = '%' . $query . '%';
+        $stmt->bind_param("sssssssi", $date, $needle, $needle, $needle, $needle, $needle, $needle, $limit);
+    } else {
+        $stmt->bind_param("si", $date, $limit);
+    }
+
+    $stmt->execute();
+
+    return hydrate_top_pick_business_rows($stmt->get_result());
+
+}
+
+function add_daily_top_pick($business_id, $date = '') {
+
+    $business_id = (int) $business_id;
+    $date = normalize_top_pick_date($date);
+
+    if ($business_id <= 0) {
+        return ['ok' => false, 'message' => 'Choose an approved place first.'];
+    }
+
+    $conn = db_connect();
+    ensure_daily_top_picks_schema($conn);
+    $stmt = $conn->prepare("SELECT business_id FROM businesses WHERE business_id = ? AND approval_status = 'approved' LIMIT 1");
+
+    if (!$stmt) {
+        return ['ok' => false, 'message' => 'The place could not be checked right now.'];
+    }
+
+    $stmt->bind_param("i", $business_id);
+    $stmt->execute();
+    $business = $stmt->get_result()->fetch_assoc();
+
+    if (!$business) {
+        return ['ok' => false, 'message' => 'Only approved places can be used as top picks.'];
+    }
+
+    $stmt = $conn->prepare("SELECT business_id FROM daily_top_picks WHERE pick_date = ? ORDER BY position ASC, id ASC");
+
+    if (!$stmt) {
+        return ['ok' => false, 'message' => 'Top picks could not be checked right now.'];
+    }
+
+    $stmt->bind_param("s", $date);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $currentCount = 0;
+
+    while ($row = $result->fetch_assoc()) {
+        $currentCount++;
+
+        if ((int) ($row['business_id'] ?? 0) === $business_id) {
+            return ['ok' => false, 'message' => 'That place is already in the top picks for this day.'];
+        }
+    }
+
+    if ($currentCount >= 6) {
+        return ['ok' => false, 'message' => 'Top picks are limited to 6 places per day. Remove one before adding another.'];
+    }
+
+    $position = $currentCount + 1;
+    $stmt = $conn->prepare("INSERT INTO daily_top_picks (pick_date, business_id, position) VALUES (?, ?, ?)");
+
+    if (!$stmt) {
+        return ['ok' => false, 'message' => 'The top pick could not be saved right now.'];
+    }
+
+    $stmt->bind_param("sii", $date, $business_id, $position);
+
+    if (!$stmt->execute()) {
+        return ['ok' => false, 'message' => 'That place could not be added. It may already be selected.'];
+    }
+
+    clear_where2go_mobile_cache('places');
+
+    return ['ok' => true, 'message' => 'Top pick added for ' . $date . '.'];
+
+}
+
+function reorder_daily_top_picks($conn, $date) {
+
+    $date = normalize_top_pick_date($date);
+    $stmt = $conn->prepare("SELECT id FROM daily_top_picks WHERE pick_date = ? ORDER BY position ASC, id ASC");
+
+    if (!$stmt) {
+        return;
+    }
+
+    $stmt->bind_param("s", $date);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $position = 1;
+    $updateStmt = $conn->prepare("UPDATE daily_top_picks SET position = ? WHERE id = ?");
+
+    if (!$updateStmt) {
+        return;
+    }
+
+    while ($row = $result->fetch_assoc()) {
+        $id = (int) ($row['id'] ?? 0);
+
+        if ($id <= 0) {
+            continue;
+        }
+
+        $updateStmt->bind_param("ii", $position, $id);
+        $updateStmt->execute();
+        $position++;
+    }
+
+}
+
+function remove_daily_top_pick($pick_id, $date = '') {
+
+    $pick_id = (int) $pick_id;
+    $date = normalize_top_pick_date($date);
+
+    if ($pick_id <= 0) {
+        return ['ok' => false, 'message' => 'Choose a top pick to remove.'];
+    }
+
+    $conn = db_connect();
+    ensure_daily_top_picks_schema($conn);
+    $stmt = $conn->prepare("DELETE FROM daily_top_picks WHERE id = ? AND pick_date = ?");
+
+    if (!$stmt) {
+        return ['ok' => false, 'message' => 'The top pick could not be removed right now.'];
+    }
+
+    $stmt->bind_param("is", $pick_id, $date);
+    $stmt->execute();
+
+    if ($stmt->affected_rows < 1) {
+        return ['ok' => false, 'message' => 'That top pick was not found for the selected day.'];
+    }
+
+    reorder_daily_top_picks($conn, $date);
+    clear_where2go_mobile_cache('places');
+
+    return ['ok' => true, 'message' => 'Top pick removed.'];
+
+}
+
+function clear_daily_top_picks($date = '') {
+
+    $date = normalize_top_pick_date($date);
+    $conn = db_connect();
+    ensure_daily_top_picks_schema($conn);
+    $stmt = $conn->prepare("DELETE FROM daily_top_picks WHERE pick_date = ?");
+
+    if (!$stmt) {
+        return ['ok' => false, 'message' => 'Top picks could not be cleared right now.'];
+    }
+
+    $stmt->bind_param("s", $date);
+    $stmt->execute();
+    clear_where2go_mobile_cache('places');
+
+    return ['ok' => true, 'message' => 'Top picks cleared for ' . $date . '. Automatic picks will fill the app until you add manual picks.'];
+
+}
+
+function clear_where2go_mobile_cache($namespace = '') {
+
+    $directory = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'where2go-mobile-cache';
+
+    if (!is_dir($directory)) {
+        return;
+    }
+
+    $namespace = preg_replace('/[^a-z0-9_-]/i', '-', (string) $namespace);
+    $pattern = $namespace !== '' ? $namespace . '-*.json' : '*.json';
+
+    foreach (glob($directory . DIRECTORY_SEPARATOR . $pattern) ?: [] as $file) {
+        if (is_file($file)) {
+            @unlink($file);
+        }
     }
 
 }
@@ -963,6 +1944,7 @@ function get_customer_saved_places_from_database($customer_id, $limit = 12) {
     ensure_customer_saved_places_table();
 
     $conn = db_connect();
+    ensure_business_photo_order_schema($conn);
     $sql = "SELECT sp.business_id,
                    sp.location_id,
                    sp.created_at AS saved_at,
@@ -979,7 +1961,7 @@ function get_customer_saved_places_from_database($customer_id, $limit = 12) {
                        (SELECT bp.image_url
                         FROM business_photos bp
                         WHERE bp.business_id = b.business_id
-                        ORDER BY bp.id ASC
+                        ORDER BY bp.display_order ASC, bp.id ASC
                         LIMIT 1),
                        b.logo_url
                    ) AS primary_photo_url,
@@ -1198,7 +2180,8 @@ function get_business_primary_photo_url($business_id) {
     }
 
     $conn = db_connect();
-    $sql = "SELECT image_url FROM business_photos WHERE business_id = ? ORDER BY id ASC LIMIT 1";
+    ensure_business_photo_order_schema($conn);
+    $sql = "SELECT image_url FROM business_photos WHERE business_id = ? ORDER BY display_order ASC, id ASC LIMIT 1";
     $stmt = $conn->prepare($sql);
 
     if ($stmt) {
@@ -1243,8 +2226,11 @@ function get_business_locations($business_id) {
     ensure_where2go_rewards_schema();
 
     $conn = db_connect();
+    ensure_partner_reservation_settings_schema($conn);
     $sql = "SELECT location_id, business_id, location_name, address, phone, promo_code, promo_details, qr_token,
-                   capacity_per_hour, has_reservations, checkin_enabled
+                   capacity_per_hour, has_reservations, min_party_size, max_party_size,
+                   reservation_duration_minutes, reservation_buffer_minutes, auto_approve_reservations,
+                   same_day_cutoff_time, blocked_dates, checkin_enabled
             FROM business_locations
             WHERE business_id = ?
             ORDER BY location_id ASC";
@@ -1421,6 +2407,9 @@ function get_public_businesses($limit = null) {
 
     $limit = $limit !== null ? (int) $limit : null;
     $conn = db_connect();
+    ensure_business_search_tags_schema($conn);
+    ensure_business_theme_schema($conn);
+    ensure_business_photo_order_schema($conn);
     $sql = "SELECT b.business_id,
                    b.partner_id,
                    b.name,
@@ -1428,6 +2417,7 @@ function get_public_businesses($limit = null) {
                    b.rules,
                    b.type,
                    b.custom_type,
+                   b.search_tags,
                    b.logo_url,
                    b.website,
                    b.approval_status,
@@ -1443,11 +2433,11 @@ function get_public_businesses($limit = null) {
                     ORDER BY bl.location_id ASC
                     LIMIT 1) AS primary_address,
                    COALESCE(
-                       (SELECT bp.image_url
-                        FROM business_photos bp
-                        WHERE bp.business_id = b.business_id
-                        ORDER BY bp.id ASC
-                        LIMIT 1),
+                        (SELECT bp.image_url
+                         FROM business_photos bp
+                         WHERE bp.business_id = b.business_id
+                         ORDER BY bp.display_order ASC, bp.id ASC
+                         LIMIT 1),
                        b.logo_url
                    ) AS photo_url,
                    (SELECT AVG(br.rating)
@@ -1503,14 +2493,18 @@ function get_business_by_id($business_id) {
     }
 
     $conn = db_connect();
-    $sql = "SELECT b.business_id, b.partner_id, b.name, b.description, b.rules, b.type, b.custom_type,
-                   b.logo_url, b.website, b.approval_status, b.review_note, b.reviewed_at, b.created_at,
+    ensure_business_search_tags_schema($conn);
+    ensure_business_theme_schema($conn);
+    ensure_business_photo_order_schema($conn);
+    $sql = "SELECT b.business_id, b.partner_id, b.name, b.description, b.rules, b.type, b.custom_type, b.search_tags,
+                   b.logo_url, b.website, b.theme_preset, b.theme_accent_color, b.theme_cover_url, b.brand_tagline,
+                   b.approval_status, b.review_note, b.reviewed_at, b.created_at,
                    COALESCE(
-                       (SELECT bp.image_url
-                        FROM business_photos bp
-                        WHERE bp.business_id = b.business_id
-                        ORDER BY bp.id ASC
-                        LIMIT 1),
+                        (SELECT bp.image_url
+                         FROM business_photos bp
+                         WHERE bp.business_id = b.business_id
+                         ORDER BY bp.display_order ASC, bp.id ASC
+                         LIMIT 1),
                        b.logo_url
                    ) AS photo_url,
                    (SELECT AVG(br.rating)
@@ -1959,13 +2953,22 @@ function get_partner_businesses($partner_id, $approval_status = null) {
     }
 
     $conn = db_connect();
+    ensure_business_search_tags_schema($conn);
+    ensure_business_theme_schema($conn);
     $sql = "SELECT b.business_id,
                    b.partner_id,
                    b.name,
                    b.description,
+                   b.rules,
                    b.type,
                    b.custom_type,
+                   b.search_tags,
+                   b.logo_url,
                    b.website,
+                   b.theme_preset,
+                   b.theme_accent_color,
+                   b.theme_cover_url,
+                   b.brand_tagline,
                    b.approval_status,
                    b.review_note,
                    b.reviewed_at,
@@ -2025,6 +3028,148 @@ function get_partner_businesses($partner_id, $approval_status = null) {
     }
 
     return $businesses;
+
+}
+
+
+function get_partner_business_profile_completion(array $business) {
+
+    $businessId = (int) ($business['business_id'] ?? 0);
+    $locations = is_array($business['locations'] ?? null) ? $business['locations'] : get_business_locations($businessId);
+    $photos = get_business_photos($businessId);
+    $menus = get_business_menus($businessId);
+    $offers = get_all_business_offers($businessId);
+    $searchTags = get_business_search_tag_list($business['search_tags'] ?? '');
+    $nowDate = date('Y-m-d');
+    $hasActiveOffer = false;
+    $hasContactReadyLocation = false;
+    $hasReservableLocation = false;
+    $hasWorkingHours = false;
+
+    foreach ($offers as $offer) {
+        $startsOk = trim((string) ($offer['start_date'] ?? '')) === '' || (string) $offer['start_date'] <= $nowDate;
+        $endsOk = trim((string) ($offer['end_date'] ?? '')) === '' || (string) $offer['end_date'] >= $nowDate;
+
+        if (!empty($offer['is_active']) && $startsOk && $endsOk) {
+            $hasActiveOffer = true;
+            break;
+        }
+    }
+
+    foreach ($locations as $location) {
+        if (trim((string) ($location['address'] ?? '')) !== '' && trim((string) ($location['phone'] ?? '')) !== '') {
+            $hasContactReadyLocation = true;
+        }
+
+        if (!empty($location['has_reservations'])) {
+            $hasReservableLocation = true;
+        }
+
+        foreach (get_location_hours_rows((int) ($location['location_id'] ?? 0)) as $hourRow) {
+            if (empty($hourRow['is_closed']) && trim((string) ($hourRow['open_time'] ?? '')) !== '' && trim((string) ($hourRow['close_time'] ?? '')) !== '') {
+                $hasWorkingHours = true;
+                break 2;
+            }
+        }
+    }
+
+    $checks = [
+        'Business name' => trim((string) ($business['name'] ?? '')) !== '',
+        'Public description' => trim((string) ($business['description'] ?? '')) !== '',
+        'Logo' => trim((string) ($business['logo_url'] ?? '')) !== '',
+        'Search tags' => !empty($searchTags),
+        'At least 3 photos' => count($photos) >= 3,
+        'Menu' => count($menus) > 0,
+        'Contact-ready location' => $hasContactReadyLocation,
+        'Working hours' => $hasWorkingHours,
+        'Reservation enabled' => $hasReservableLocation,
+        'Live offer' => $hasActiveOffer,
+    ];
+
+    $completed = count(array_filter($checks));
+    $total = count($checks);
+    $missing = [];
+
+    foreach ($checks as $label => $ok) {
+        if (!$ok) {
+            $missing[] = $label;
+        }
+    }
+
+    return [
+        'percent' => $total > 0 ? (int) round(($completed / $total) * 100) : 0,
+        'completed' => $completed,
+        'total' => $total,
+        'missing' => $missing,
+    ];
+
+}
+
+
+function get_partner_reservation_calendar($partner_id, $start_date = '', $days = 14) {
+
+    $partner_id = (int) $partner_id;
+    $days = max(1, min(31, (int) $days));
+    $startTimestamp = strtotime((string) $start_date);
+
+    if ($partner_id <= 0) {
+        return [];
+    }
+
+    if (!$startTimestamp) {
+        $startTimestamp = strtotime(date('Y-m-d'));
+    }
+
+    $startDate = date('Y-m-d', $startTimestamp);
+    $endDate = date('Y-m-d', strtotime('+' . ($days - 1) . ' day', $startTimestamp));
+    $calendar = [];
+
+    for ($offset = 0; $offset < $days; $offset++) {
+        $date = date('Y-m-d', strtotime('+' . $offset . ' day', $startTimestamp));
+        $calendar[$date] = [
+            'date' => $date,
+            'items' => [],
+        ];
+    }
+
+    $conn = db_connect();
+    $sql = "SELECT bk.id,
+                   bk.location_id,
+                   bk.user_name,
+                   bk.user_email,
+                   bk.date,
+                   bk.time_slot,
+                   bk.guests,
+                   bk.status,
+                   b.business_id,
+                   b.name AS business_name,
+                   bl.location_name,
+                   bl.address AS location_address
+            FROM bookings bk
+            INNER JOIN business_locations bl ON bl.location_id = bk.location_id
+            INNER JOIN businesses b ON b.business_id = bl.business_id
+            WHERE b.partner_id = ?
+              AND bk.date BETWEEN ? AND ?
+            ORDER BY bk.date ASC, bk.time_slot ASC, bk.id ASC";
+    $stmt = $conn->prepare($sql);
+
+    if (!$stmt) {
+        return array_values($calendar);
+    }
+
+    $stmt->bind_param("iss", $partner_id, $startDate, $endDate);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    while ($row = $result->fetch_assoc()) {
+        $date = (string) ($row['date'] ?? '');
+
+        if (isset($calendar[$date])) {
+            $calendar[$date]['items'][] = $row;
+        }
+    }
+
+    return array_values($calendar);
 
 }
 
@@ -2154,6 +3299,33 @@ function refresh_partner_location_qr_token($partner_id, $location_id) {
 /* -------------------------
    BUSINESS PHOTOS
 ------------------------- */
+function ensure_business_photo_order_schema($conn = null) {
+
+    static $ready = false;
+
+    if ($ready) {
+        return;
+    }
+
+    $conn = $conn ?: db_connect();
+    ensure_table_column(
+        $conn,
+        'business_photos',
+        'display_order',
+        'ALTER TABLE business_photos ADD COLUMN display_order INT NOT NULL DEFAULT 0 AFTER image_url'
+    );
+    ensure_table_index(
+        $conn,
+        'business_photos',
+        'idx_business_photos_display_order',
+        'ALTER TABLE business_photos ADD INDEX idx_business_photos_display_order (business_id, display_order, id)'
+    );
+
+    $ready = true;
+
+}
+
+
 function get_business_photos($business_id) {
 
     $business_id = (int) $business_id;
@@ -2163,7 +3335,8 @@ function get_business_photos($business_id) {
     }
 
     $conn = db_connect();
-    $sql = "SELECT id, business_id, image_url FROM business_photos WHERE business_id = ? ORDER BY id ASC";
+    ensure_business_photo_order_schema($conn);
+    $sql = "SELECT id, business_id, image_url, display_order FROM business_photos WHERE business_id = ? ORDER BY display_order ASC, id ASC";
     $stmt = $conn->prepare($sql);
 
     if (!$stmt) {
@@ -2351,8 +3524,17 @@ function normalize_partner_locations_input($locations, $legacyData = []) {
             'location_name' => trim((string) ($legacyData['location_name'] ?? '')),
             'address' => trim((string) ($legacyData['address'] ?? '')),
             'phone' => trim((string) ($legacyData['phone'] ?? '')),
+            'promo_code' => trim((string) ($legacyData['promo_code'] ?? '')),
+            'promo_details' => trim((string) ($legacyData['promo_details'] ?? '')),
             'capacity_per_hour' => (int) ($legacyData['capacity_per_hour'] ?? 10),
             'has_reservations' => !empty($legacyData['has_reservations']) ? 1 : 0,
+            'min_party_size' => (int) ($legacyData['min_party_size'] ?? 1),
+            'max_party_size' => (int) ($legacyData['max_party_size'] ?? 40),
+            'reservation_duration_minutes' => (int) ($legacyData['reservation_duration_minutes'] ?? 60),
+            'reservation_buffer_minutes' => (int) ($legacyData['reservation_buffer_minutes'] ?? 0),
+            'auto_approve_reservations' => !empty($legacyData['auto_approve_reservations']) ? 1 : 0,
+            'same_day_cutoff_time' => trim((string) ($legacyData['same_day_cutoff_time'] ?? '')),
+            'blocked_dates' => trim((string) ($legacyData['blocked_dates'] ?? '')),
             'hours' => $legacyData['hours'] ?? [],
         ]];
     }
@@ -2366,6 +3548,15 @@ function normalize_partner_locations_input($locations, $legacyData = []) {
         $phone = trim((string) ($location['phone'] ?? ''));
         $promoCode = strtoupper(trim((string) ($location['promo_code'] ?? '')));
         $promoDetails = trim((string) ($location['promo_details'] ?? ''));
+        $capacityPerHour = max(1, (int) ($location['capacity_per_hour'] ?? 10));
+        $capacityGuestLimit = get_location_capacity_guest_limit(['capacity_per_hour' => $capacityPerHour]);
+        $minPartySize = max(1, (int) ($location['min_party_size'] ?? 1));
+        $maxPartySize = max($minPartySize, (int) ($location['max_party_size'] ?? $capacityGuestLimit));
+        $maxPartySize = min(max($minPartySize, $maxPartySize), max($minPartySize, $capacityGuestLimit));
+        $durationMinutes = max(15, min(360, (int) ($location['reservation_duration_minutes'] ?? 60)));
+        $bufferMinutes = max(0, min(180, (int) ($location['reservation_buffer_minutes'] ?? 0)));
+        $sameDayCutoffTime = normalize_partner_cutoff_time($location['same_day_cutoff_time'] ?? '');
+        $blockedDates = normalize_partner_blocked_dates($location['blocked_dates'] ?? '');
 
         if ($locationName === '' && $address === '' && $phone === '') {
             continue;
@@ -2378,8 +3569,15 @@ function normalize_partner_locations_input($locations, $legacyData = []) {
             'phone' => $phone,
             'promo_code' => $promoCode,
             'promo_details' => $promoDetails,
-            'capacity_per_hour' => max(1, (int) ($location['capacity_per_hour'] ?? 10)),
+            'capacity_per_hour' => $capacityPerHour,
             'has_reservations' => !empty($location['has_reservations']) ? 1 : 0,
+            'min_party_size' => $minPartySize,
+            'max_party_size' => $maxPartySize,
+            'reservation_duration_minutes' => $durationMinutes,
+            'reservation_buffer_minutes' => $bufferMinutes,
+            'auto_approve_reservations' => !empty($location['auto_approve_reservations']) ? 1 : 0,
+            'same_day_cutoff_time' => $sameDayCutoffTime,
+            'blocked_dates' => $blockedDates,
             'checkin_enabled' => array_key_exists('checkin_enabled', $location) ? (!empty($location['checkin_enabled']) ? 1 : 0) : 1,
             'hours' => normalize_hours_input_rows($location['hours'] ?? []),
         ];
@@ -2406,8 +3604,13 @@ function get_partner_business_form_data($partner_id, $business_id = 0) {
             'rules' => '',
             'type' => 'restaurant',
             'custom_type' => '',
+            'search_tags' => '',
             'logo_url' => '',
             'website' => '',
+            'theme_preset' => 'where2go',
+            'theme_accent_color' => '',
+            'theme_cover_url' => '',
+            'brand_tagline' => '',
             'approval_status' => 'pending',
             'review_note' => '',
             'reviewed_at' => null,
@@ -2421,6 +3624,13 @@ function get_partner_business_form_data($partner_id, $business_id = 0) {
             'promo_details' => '',
             'capacity_per_hour' => 10,
             'has_reservations' => 1,
+            'min_party_size' => 1,
+            'max_party_size' => 40,
+            'reservation_duration_minutes' => 60,
+            'reservation_buffer_minutes' => 0,
+            'auto_approve_reservations' => 0,
+            'same_day_cutoff_time' => '',
+            'blocked_dates' => '',
             'checkin_enabled' => 1,
             'hours' => get_default_hours_rows(),
         ]],
@@ -2542,8 +3752,14 @@ function save_partner_business_submission($partner_id, $data, $business_id = 0) 
     $rules = trim((string) ($data['rules'] ?? ''));
     $type = trim((string) ($data['type'] ?? 'restaurant'));
     $customType = trim((string) ($data['custom_type'] ?? ''));
+    $searchTags = normalize_business_search_tags($data['search_tags'] ?? '');
     $rawLogoUrl = trim((string) ($data['logo_url'] ?? ''));
     $rawWebsite = trim((string) ($data['website'] ?? ''));
+    $themePreset = normalize_business_theme_preset($data['theme_preset'] ?? 'where2go');
+    $themeAccentColor = normalize_business_theme_accent_color($data['theme_accent_color'] ?? '');
+    $rawThemeCoverUrl = trim((string) ($data['theme_cover_url'] ?? ''));
+    $themeCoverUrl = normalize_safe_url_input($rawThemeCoverUrl);
+    $brandTagline = substr(trim(preg_replace('/\s+/', ' ', (string) ($data['brand_tagline'] ?? ''))), 0, 140);
     $logoUrl = normalize_safe_url_input($rawLogoUrl);
     $website = normalize_safe_url_input($rawWebsite, false);
     $settings = get_where2go_rewards_program_settings();
@@ -2559,6 +3775,10 @@ function save_partner_business_submission($partner_id, $data, $business_id = 0) 
 
     if (($rawLogoUrl !== '' && $logoUrl === '') || ($rawWebsite !== '' && $website === '')) {
         return ['ok' => false, 'message' => 'Website links must use http or https. Logo links may also use an existing site-relative asset path.'];
+    }
+
+    if ($rawThemeCoverUrl !== '' && $themeCoverUrl === '') {
+        return ['ok' => false, 'message' => 'Cover image links must use http, https, or an existing site-relative asset path.'];
     }
 
     foreach ((is_array($data['photo_urls'] ?? null) ? $data['photo_urls'] : []) as $photoUrl) {
@@ -2608,6 +3828,10 @@ function save_partner_business_submission($partner_id, $data, $business_id = 0) 
     ensure_where2go_rewards_schema();
 
     $conn = db_connect();
+    ensure_business_search_tags_schema($conn);
+    ensure_business_theme_schema($conn);
+    ensure_partner_reservation_settings_schema($conn);
+    ensure_business_photo_order_schema($conn);
     ensure_business_type_catalog_values($conn);
     $currentBusiness = $business_id > 0 ? get_business_by_id($business_id) : null;
     $preserveApproval = $currentBusiness && trim((string) ($currentBusiness['approval_status'] ?? '')) === 'approved';
@@ -2617,7 +3841,8 @@ function save_partner_business_submission($partner_id, $data, $business_id = 0) 
 
         if ($business_id > 0) {
             $sql = "UPDATE businesses
-                    SET name = ?, description = ?, rules = ?, type = ?, custom_type = ?, logo_url = ?, website = ?,
+                    SET name = ?, description = ?, rules = ?, type = ?, custom_type = ?, search_tags = ?, logo_url = ?, website = ?,
+                        theme_preset = ?, theme_accent_color = NULLIF(?, ''), theme_cover_url = NULLIF(?, ''), brand_tagline = NULLIF(?, ''),
                         approval_status = " . ($preserveApproval ? "'approved'" : "'pending'") . ",
                         review_note = " . ($preserveApproval ? "review_note" : "NULL") . ",
                         reviewed_at = " . ($preserveApproval ? "reviewed_at" : "NULL") . "
@@ -2628,14 +3853,16 @@ function save_partner_business_submission($partner_id, $data, $business_id = 0) 
                 throw new Exception('Business update could not be prepared.');
             }
 
-            $stmt->bind_param("sssssssii", $name, $description, $rules, $type, $customType, $logoUrl, $website, $business_id, $partner_id);
+            $stmt->bind_param("ssssssssssssii", $name, $description, $rules, $type, $customType, $searchTags, $logoUrl, $website, $themePreset, $themeAccentColor, $themeCoverUrl, $brandTagline, $business_id, $partner_id);
 
             if (!$stmt->execute()) {
                 throw new Exception('Business update failed.');
             }
         } else {
-            $sql = "INSERT INTO businesses (partner_id, name, description, rules, type, custom_type, logo_url, website, approval_status, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
+            $sql = "INSERT INTO businesses
+                    (partner_id, name, description, rules, type, custom_type, search_tags, logo_url, website,
+                     theme_preset, theme_accent_color, theme_cover_url, brand_tagline, approval_status, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, NOW())";
             $stmt = $conn->prepare($sql);
 
             if (!$stmt) {
@@ -2643,7 +3870,7 @@ function save_partner_business_submission($partner_id, $data, $business_id = 0) 
             }
 
             $approvalStatus = 'pending';
-            $stmt->bind_param("issssssss", $partner_id, $name, $description, $rules, $type, $customType, $logoUrl, $website, $approvalStatus);
+            $stmt->bind_param("isssssssssssss", $partner_id, $name, $description, $rules, $type, $customType, $searchTags, $logoUrl, $website, $themePreset, $themeAccentColor, $themeCoverUrl, $brandTagline, $approvalStatus);
 
             if (!$stmt->execute()) {
                 throw new Exception('Business insert failed.');
@@ -2684,12 +3911,21 @@ function save_partner_business_submission($partner_id, $data, $business_id = 0) 
             $promoDetails = trim((string) ($location['promo_details'] ?? ''));
             $capacityPerHour = max(1, (int) ($location['capacity_per_hour'] ?? 10));
             $hasReservations = !empty($location['has_reservations']) ? 1 : 0;
+            $minPartySize = max(1, (int) ($location['min_party_size'] ?? 1));
+            $maxPartySize = max($minPartySize, (int) ($location['max_party_size'] ?? get_location_capacity_guest_limit(['capacity_per_hour' => $capacityPerHour])));
+            $durationMinutes = max(15, min(360, (int) ($location['reservation_duration_minutes'] ?? 60)));
+            $bufferMinutes = max(0, min(180, (int) ($location['reservation_buffer_minutes'] ?? 0)));
+            $autoApproveReservations = !empty($location['auto_approve_reservations']) ? 1 : 0;
+            $sameDayCutoffTime = normalize_partner_cutoff_time($location['same_day_cutoff_time'] ?? '');
+            $blockedDates = normalize_partner_blocked_dates($location['blocked_dates'] ?? '');
             $checkinEnabled = array_key_exists('checkin_enabled', $location) ? (!empty($location['checkin_enabled']) ? 1 : 0) : 1;
 
             if ($locationId > 0 && in_array($locationId, $existingLocationIds, true)) {
                 $sql = "UPDATE business_locations
                         SET location_name = ?, address = ?, phone = ?, promo_code = ?, promo_details = ?,
-                            capacity_per_hour = ?, has_reservations = ?, checkin_enabled = ?
+                            capacity_per_hour = ?, has_reservations = ?, min_party_size = ?, max_party_size = ?,
+                            reservation_duration_minutes = ?, reservation_buffer_minutes = ?, auto_approve_reservations = ?,
+                            same_day_cutoff_time = NULLIF(?, ''), blocked_dates = NULLIF(?, ''), checkin_enabled = ?
                         WHERE location_id = ? AND business_id = ?";
                 $stmt = $conn->prepare($sql);
 
@@ -2697,7 +3933,26 @@ function save_partner_business_submission($partner_id, $data, $business_id = 0) 
                     throw new Exception('Location update could not be prepared.');
                 }
 
-                $stmt->bind_param("sssssiiiii", $locationName, $address, $phone, $promoCode, $promoDetails, $capacityPerHour, $hasReservations, $checkinEnabled, $locationId, $business_id);
+                $stmt->bind_param(
+                    "sssssiiiiiiissiii",
+                    $locationName,
+                    $address,
+                    $phone,
+                    $promoCode,
+                    $promoDetails,
+                    $capacityPerHour,
+                    $hasReservations,
+                    $minPartySize,
+                    $maxPartySize,
+                    $durationMinutes,
+                    $bufferMinutes,
+                    $autoApproveReservations,
+                    $sameDayCutoffTime,
+                    $blockedDates,
+                    $checkinEnabled,
+                    $locationId,
+                    $business_id
+                );
 
                 if (!$stmt->execute()) {
                     throw new Exception('Location update failed.');
@@ -2707,15 +3962,37 @@ function save_partner_business_submission($partner_id, $data, $business_id = 0) 
             } else {
                 $qrToken = generate_unique_location_qr_token($conn);
                 $sql = "INSERT INTO business_locations
-                        (business_id, location_name, address, phone, promo_code, promo_details, qr_token, capacity_per_hour, has_reservations, checkin_enabled)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                        (business_id, location_name, address, phone, promo_code, promo_details, qr_token,
+                         capacity_per_hour, has_reservations, min_party_size, max_party_size,
+                         reservation_duration_minutes, reservation_buffer_minutes, auto_approve_reservations,
+                         same_day_cutoff_time, blocked_dates, checkin_enabled)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?)";
                 $stmt = $conn->prepare($sql);
 
                 if (!$stmt) {
                     throw new Exception('Location insert could not be prepared.');
                 }
 
-                $stmt->bind_param("issssssiii", $business_id, $locationName, $address, $phone, $promoCode, $promoDetails, $qrToken, $capacityPerHour, $hasReservations, $checkinEnabled);
+                $stmt->bind_param(
+                    "issssssiiiiiiissi",
+                    $business_id,
+                    $locationName,
+                    $address,
+                    $phone,
+                    $promoCode,
+                    $promoDetails,
+                    $qrToken,
+                    $capacityPerHour,
+                    $hasReservations,
+                    $minPartySize,
+                    $maxPartySize,
+                    $durationMinutes,
+                    $bufferMinutes,
+                    $autoApproveReservations,
+                    $sameDayCutoffTime,
+                    $blockedDates,
+                    $checkinEnabled
+                );
 
                 if (!$stmt->execute()) {
                     throw new Exception('Location insert failed.');
@@ -2773,14 +4050,15 @@ function save_partner_business_submission($partner_id, $data, $business_id = 0) 
         }
 
         if ($photoUrls) {
-            $insertPhotoStmt = $conn->prepare("INSERT INTO business_photos (business_id, image_url) VALUES (?, ?)");
+            $insertPhotoStmt = $conn->prepare("INSERT INTO business_photos (business_id, image_url, display_order) VALUES (?, ?, ?)");
 
             if (!$insertPhotoStmt) {
                 throw new Exception('Business photo insert could not be prepared.');
             }
 
-            foreach ($photoUrls as $photoUrl) {
-                $insertPhotoStmt->bind_param("is", $business_id, $photoUrl);
+            foreach ($photoUrls as $photoIndex => $photoUrl) {
+                $displayOrder = (int) $photoIndex;
+                $insertPhotoStmt->bind_param("isi", $business_id, $photoUrl, $displayOrder);
 
                 if (!$insertPhotoStmt->execute()) {
                     throw new Exception('Business photo insert failed.');
@@ -2838,6 +4116,8 @@ function save_partner_business_submission($partner_id, $data, $business_id = 0) 
         }
 
         $conn->commit();
+        clear_where2go_mobile_cache('places');
+        clear_where2go_mobile_cache('availability');
 
         return [
             'ok' => true,
@@ -2889,7 +4169,13 @@ function set_business_approval_status($business_id, $status, $review_note = '') 
     $reviewedAt = $status === 'pending' ? null : date('Y-m-d H:i:s');
     $stmt->bind_param("sssi", $status, $noteValue, $reviewedAt, $business_id);
 
-    return $stmt->execute();
+    $ok = $stmt->execute();
+
+    if ($ok) {
+        clear_where2go_mobile_cache('places');
+    }
+
+    return $ok;
 
 }
 
@@ -2901,11 +4187,13 @@ function get_pending_businesses($status = 'pending') {
 
     $status = trim((string) $status);
     $conn = db_connect();
+    ensure_business_search_tags_schema($conn);
     $sql = "SELECT b.business_id,
                    b.name,
                    b.description,
                    b.type,
                    b.custom_type,
+                   b.search_tags,
                    b.website,
                    b.approval_status,
                    b.review_note,
@@ -2991,16 +4279,24 @@ function get_customer_by_id($id) {
 function get_location_by_id($location_id) {
 
     $location_id = (int) $location_id;
+    static $cache = [];
 
     if ($location_id <= 0) {
         return null;
     }
 
+    if (array_key_exists($location_id, $cache)) {
+        return $cache[$location_id];
+    }
+
     ensure_where2go_rewards_schema();
 
     $conn = db_connect();
+    ensure_partner_reservation_settings_schema($conn);
     $sql = "SELECT bl.location_id, bl.business_id, bl.location_name, bl.address, bl.phone, bl.promo_code, bl.promo_details,
-                   bl.qr_token, bl.capacity_per_hour, bl.has_reservations, bl.checkin_enabled,
+                   bl.qr_token, bl.capacity_per_hour, bl.has_reservations, bl.min_party_size, bl.max_party_size,
+                   bl.reservation_duration_minutes, bl.reservation_buffer_minutes, bl.auto_approve_reservations,
+                   bl.same_day_cutoff_time, bl.blocked_dates, bl.checkin_enabled,
                    b.name AS business_name, b.type AS business_type, b.custom_type, b.website, b.approval_status
             FROM business_locations bl
             INNER JOIN businesses b ON b.business_id = bl.business_id
@@ -3026,7 +4322,9 @@ function get_location_by_id($location_id) {
     $location['checkin_url'] = build_location_checkin_url((string) ($location['qr_token'] ?? ''));
     $location['type_label'] = format_business_type_label($location['business_type'] ?? 'other', $location['custom_type'] ?? '');
 
-    return $location;
+    $cache[$location_id] = $location;
+
+    return $cache[$location_id];
 
 }
 
@@ -3134,6 +4432,43 @@ function is_location_open_for_booking($location_id, $date, $time) {
 }
 
 
+function is_booking_time_on_location_slot_interval(array $location, $date, $time) {
+
+    $locationId = (int) ($location['location_id'] ?? 0);
+    $hours = get_location_hours_for_date($locationId, $date);
+    $time = normalize_booking_time_slot($time);
+
+    if (!$hours || $time === '') {
+        return false;
+    }
+
+    $openTime = trim((string) ($hours['open_time'] ?? ''));
+    $closeTime = trim((string) ($hours['close_time'] ?? ''));
+
+    if ($openTime === '' || $closeTime === '') {
+        return false;
+    }
+
+    $openTimestamp = strtotime((string) $date . ' ' . $openTime);
+    $closeTimestamp = strtotime((string) $date . ' ' . $closeTime);
+    $slotTimestamp = strtotime((string) $date . ' ' . $time);
+
+    if (!$openTimestamp || !$closeTimestamp || !$slotTimestamp) {
+        return false;
+    }
+
+    if ($closeTimestamp <= $openTimestamp && $slotTimestamp < $openTimestamp) {
+        $slotTimestamp = strtotime('+1 day', $slotTimestamp);
+    }
+
+    $minutesFromOpen = (int) (($slotTimestamp - $openTimestamp) / 60);
+    $slotMinutes = get_location_booking_slot_minutes($location, 60);
+
+    return $minutesFromOpen >= 0 && $slotMinutes > 0 && $minutesFromOpen % $slotMinutes === 0;
+
+}
+
+
 /* -------------------------
    SLOT BOOKING USAGE
 ------------------------- */
@@ -3219,6 +4554,117 @@ function get_location_booking_slot_usage_map($location_id, $date) {
 
 
 /* -------------------------
+   SLOT BOOKING USAGE MAPS
+------------------------- */
+function get_location_booking_slot_usage_maps($location_id, $start_date, $days = 14) {
+
+    $location_id = (int) $location_id;
+    $days = max(1, (int) $days);
+    $startTimestamp = strtotime((string) $start_date);
+
+    if ($location_id <= 0 || !$startTimestamp) {
+        return [];
+    }
+
+    $startDate = date('Y-m-d', $startTimestamp);
+    $endDate = date('Y-m-d', strtotime('+' . ($days - 1) . ' day', $startTimestamp));
+    $conn = db_connect();
+    $sql = "SELECT date,
+                   time_slot,
+                   COALESCE(SUM(CASE
+                        WHEN guests IS NULL OR guests < 1 THEN 1
+                        ELSE CEIL(guests / 4)
+                    END), 0) AS reserved_units
+            FROM bookings
+            WHERE location_id = ?
+              AND date BETWEEN ? AND ?
+              AND status IN ('pending', 'confirmed')
+            GROUP BY date, time_slot";
+    $stmt = $conn->prepare($sql);
+
+    if (!$stmt) {
+        return [];
+    }
+
+    $stmt->bind_param("iss", $location_id, $startDate, $endDate);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $usage = [];
+
+    while ($row = $result->fetch_assoc()) {
+        $date = (string) ($row['date'] ?? '');
+        $time = normalize_booking_time_slot($row['time_slot'] ?? '');
+
+        if ($date !== '' && $time !== '') {
+            $usage[$date][$time] = (int) ($row['reserved_units'] ?? 0);
+        }
+    }
+
+    return $usage;
+
+}
+
+
+/* -------------------------
+   BUILD BOOKING SLOTS
+------------------------- */
+function build_available_booking_slots_from_usage(array $location, ?array $hours, $date, $slot_minutes = 60, $guests = 1, array $usage_map = []) {
+
+    $slot_minutes = get_location_booking_slot_minutes($location, $slot_minutes);
+    $guests = max(1, (int) $guests);
+
+    if ((int) ($location['has_reservations'] ?? 0) !== 1 || !$hours || (int) ($hours['is_closed'] ?? 0) === 1) {
+        return [];
+    }
+
+    if (!is_location_reservation_request_allowed($location, $date, $guests)) {
+        return [];
+    }
+
+    $openTime = trim((string) ($hours['open_time'] ?? ''));
+    $closeTime = trim((string) ($hours['close_time'] ?? ''));
+
+    if ($openTime === '' || $closeTime === '') {
+        return [];
+    }
+
+    $current = strtotime((string) $date . ' ' . $openTime);
+    $end = strtotime((string) $date . ' ' . $closeTime);
+
+    if (!$current || !$end) {
+        return [];
+    }
+
+    if ($end <= $current) {
+        $end = strtotime('+1 day', $end);
+    }
+
+    $capacity = max(0, (int) ($location['capacity_per_hour'] ?? 0));
+    $requiredTables = get_required_table_count($guests);
+
+    if ($capacity <= 0) {
+        return [];
+    }
+
+    $slots = [];
+    $now = time();
+
+    while ($current < $end) {
+        $time = date('H:i:s', $current);
+        $reservedUnits = (int) ($usage_map[$time] ?? 0);
+        $slots[] = [
+            'time' => $time,
+            'available' => $current > $now && ($reservedUnits + $requiredTables) <= $capacity,
+        ];
+        $current = strtotime('+' . $slot_minutes . ' minutes', $current);
+    }
+
+    return $slots;
+
+}
+
+
+/* -------------------------
    SLOT AVAILABILITY
 ------------------------- */
 function is_booking_slot_available($location_id, $date, $time, $guests = 1) {
@@ -3231,11 +4677,19 @@ function is_booking_slot_available($location_id, $date, $time, $guests = 1) {
         return false;
     }
 
+    if (!is_location_reservation_request_allowed($location, $date, $guests)) {
+        return false;
+    }
+
     if (!is_location_open_for_booking($location_id, $date, $time)) {
         return false;
     }
 
     if (!is_booking_slot_in_future($date, $time, $location_id)) {
+        return false;
+    }
+
+    if (!is_booking_time_on_location_slot_interval($location, $date, $time)) {
         return false;
     }
 
@@ -3263,48 +4717,13 @@ function get_available_booking_slots($location_id, $date, $slot_minutes = 60, $g
     $location = get_location_by_id($location_id);
     $hours = get_location_hours_for_date($location_id, $date);
 
-    if (!$location || (int) ($location['has_reservations'] ?? 0) !== 1 || !$hours || (int) ($hours['is_closed'] ?? 0) === 1) {
+    if (!$location) {
         return [];
     }
 
-    $openTime = trim((string) ($hours['open_time'] ?? ''));
-    $closeTime = trim((string) ($hours['close_time'] ?? ''));
-
-    if ($openTime === '' || $closeTime === '') {
-        return [];
-    }
-
-    $slots = [];
-    $current = strtotime($date . ' ' . $openTime);
-    $end = strtotime($date . ' ' . $closeTime);
-
-    if (!$current || !$end) {
-        return [];
-    }
-
-    if ($end <= $current) {
-        $end = strtotime('+1 day', $end);
-    }
-
-    $capacity = max(0, (int) ($location['capacity_per_hour'] ?? 0));
-    $requiredTables = get_required_table_count($guests);
     $usageMap = get_location_booking_slot_usage_map($location_id, $date);
 
-    if ($capacity <= 0) {
-        return [];
-    }
-
-    while ($current < $end) {
-        $time = date('H:i:s', $current);
-        $reservedUnits = (int) ($usageMap[$time] ?? 0);
-        $slots[] = [
-            'time' => $time,
-            'available' => $current > time() && ($reservedUnits + $requiredTables) <= $capacity,
-        ];
-        $current = strtotime('+' . $slot_minutes . ' minutes', $current);
-    }
-
-    return $slots;
+    return build_available_booking_slots_from_usage($location, $hours, $date, $slot_minutes, $guests, $usageMap);
 
 }
 
@@ -3323,7 +4742,14 @@ function get_location_booking_calendar_days($location_id, $start_date, $days = 2
         return [];
     }
 
+    $location = get_location_by_id($location_id);
+
+    if (!$location || (int) ($location['has_reservations'] ?? 0) !== 1) {
+        return [];
+    }
+
     $calendar = [];
+    $usageMaps = get_location_booking_slot_usage_maps($location_id, date('Y-m-d', $startTimestamp), $days);
 
     for ($offset = 0; $offset < $days; $offset++) {
         $date = date('Y-m-d', strtotime('+' . $offset . ' day', $startTimestamp));
@@ -3332,7 +4758,7 @@ function get_location_booking_calendar_days($location_id, $start_date, $days = 2
         $slots = [];
 
         if ($hours && (int) ($hours['is_closed'] ?? 0) !== 1) {
-            $slots = get_available_booking_slots($location_id, $date, 60, $guests);
+            $slots = build_available_booking_slots_from_usage($location, $hours, $date, 60, $guests, $usageMaps[$date] ?? []);
             $availableSlots = array_values(array_filter($slots, function ($slot) {
                 return !empty($slot['available']);
             }));
@@ -3365,6 +4791,12 @@ function create_booking($customer_id, $location_id, $date, $time, $guests = 1, $
         return false;
     }
 
+    $location = get_location_by_id($location_id);
+
+    if (!$location) {
+        return false;
+    }
+
     if (!is_booking_slot_available($location_id, $date, $time, $guests)) {
         return false;
     }
@@ -3373,7 +4805,7 @@ function create_booking($customer_id, $location_id, $date, $time, $guests = 1, $
     $fallbackName = trim(($customer['First_N'] ?? '') . ' ' . ($customer['Last_N'] ?? ''));
     $user_name = trim((string) ($user_name !== null ? $user_name : $fallbackName));
     $user_email = trim((string) ($user_email !== null ? $user_email : ($customer['Email'] ?? '')));
-    $status = "pending";
+    $status = !empty($location['auto_approve_reservations']) ? "confirmed" : "pending";
     $conn = db_connect();
     $sql = "INSERT INTO bookings
             (location_id, user_name, user_email, date, time_slot, guests, status, created_at, customer_id)

@@ -117,6 +117,7 @@
                 },
                 body: JSON.stringify({
                     box_id: boxId,
+                    csrf_token: (window.where2goPageData && window.where2goPageData.csrfToken) || '',
                 }),
             });
             const payload = await response.json();
@@ -163,4 +164,3 @@
         }
     });
 })();
-

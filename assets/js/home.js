@@ -280,6 +280,7 @@
                     place_id: placeId,
                     source: source,
                     payload: payload,
+                    csrf_token: pageData.csrfToken || '',
                 }).toString(),
             });
 
